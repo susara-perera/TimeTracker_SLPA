@@ -158,25 +158,25 @@ const Dashboard = () => {
       roles: ['super_admin', 'admin']
     },
     {
-      id: 'reports',
-      label: 'Reports',
-      icon: 'bi-file-text',
-      color: 'info',
-      roles: ['super_admin', 'admin', 'clerk']
-    },
-    {
       id: 'divisions',
-      label: 'Divisions',
+      label: 'Division Manage',
       icon: 'bi-building',
       color: 'warning',
       roles: ['super_admin']
     },
     {
       id: 'sections',
-      label: 'Sections',
+      label: 'Section Manage',
       icon: 'bi-diagram-3',
       color: 'purple',
       roles: ['super_admin', 'admin']
+    },
+    {
+      id: 'reports',
+      label: 'Report Generation',
+      icon: 'bi-graph-up',
+      color: 'info',
+      roles: ['super_admin', 'admin', 'clerk']
     },
     {
       id: 'settings',
@@ -265,7 +265,9 @@ const Dashboard = () => {
           </div>
           <div className="actions-list">
             {quickActions.map((action) => {
-              if (!hasAccess(action.roles)) return null;
+              console.log('Checking access for action:', action.id, 'User role:', user?.role, 'Action roles:', action.roles, 'Has access:', hasAccess(action.roles));
+              // Temporarily show all buttons for debugging
+              // if (!hasAccess(action.roles)) return null;
               
               return (
                 <button
