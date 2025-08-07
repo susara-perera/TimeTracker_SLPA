@@ -16,22 +16,40 @@ const generateToken = (id) => {
 // @access  Public
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, employeeId, password } = req.body;
 
-    // Find user by email
-    const user = await User.findOne({ email })
-      .populate('division', 'name code')
-      .populate('section', 'name code');
+    // Determine the login credential (email or employeeId)
+    let user;
+    let loginIdentifier;
+
+    if (email) {
+      // Login with email
+      user = await User.findOne({ email })
+        .populate('division', 'name code')
+        .populate('section', 'name code');
+      loginIdentifier = email;
+    } else if (employeeId) {
+      // Login with employee ID
+      user = await User.findOne({ employeeId })
+        .populate('division', 'name code')
+        .populate('section', 'name code');
+      loginIdentifier = employeeId;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide either email or employee ID'
+      });
+    }
 
     if (!user) {
       // Log failed login attempt
       await AuditLog.createLog({
         action: 'failed_login',
-        entity: { type: 'User', name: email },
+        entity: { type: 'User', name: loginIdentifier },
         category: 'authentication',
         severity: 'medium',
         description: 'Failed login attempt - user not found',
-        details: `Login attempt for non-existent email: ${email}`,
+        details: `Login attempt for non-existent credential: ${loginIdentifier}`,
         metadata: {
           ipAddress: req.ip,
           userAgent: req.get('User-Agent'),

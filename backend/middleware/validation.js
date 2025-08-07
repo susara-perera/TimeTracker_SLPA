@@ -95,8 +95,8 @@ const commonValidations = {
 
   role: (field = 'role') =>
     body(field)
-      .isIn(['super_admin', 'admin', 'clerk', 'employee'])
-      .withMessage('Role must be one of: super_admin, admin, clerk, employee'),
+      .isIn(['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'])
+      .withMessage('Role must be one of: super_admin, admin, clerk, administrative_clerk, employee'),
 
   status: (field, allowedValues) =>
     body(field)
@@ -128,6 +128,13 @@ const userValidation = {
     commonValidations.email(),
     commonValidations.employeeId(),
     commonValidations.password(),
+    body('confirmPassword')
+      .custom((value, { req }) => {
+        if (value !== req.body.password) {
+          throw new Error('Password confirmation does not match');
+        }
+        return true;
+      }),
     commonValidations.role(),
     body('division')
       .if(body('role').not().equals('super_admin'))
@@ -162,8 +169,8 @@ const userValidation = {
       .withMessage('Employee ID must be between 3 and 20 characters'),
     body('role')
       .optional()
-      .isIn(['super_admin', 'admin', 'clerk', 'employee'])
-      .withMessage('Role must be one of: super_admin, admin, clerk, employee'),
+      .isIn(['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'])
+      .withMessage('Role must be one of: super_admin, admin, clerk, administrative_clerk, employee'),
     body('division')
       .optional()
       .isMongoId()
@@ -268,42 +275,32 @@ const attendanceValidation = {
 // Division validation rules
 const divisionValidation = {
   create: [
-    commonValidations.requiredString('name', 2, 100),
+    body('name')
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage('Division name is required'),
     body('code')
       .trim()
-      .isLength({ min: 2, max: 10 })
-      .withMessage('Division code must be between 2 and 10 characters')
-      .matches(/^[A-Z0-9]+$/)
-      .withMessage('Division code can only contain uppercase letters and numbers'),
-    commonValidations.optionalString('description', 500),
-    body('manager')
-      .optional()
-      .isMongoId()
-      .withMessage('Manager must be a valid user ID'),
-    commonValidations.time('workingHours.startTime'),
-    commonValidations.time('workingHours.endTime'),
-    commonValidations.time('workingHours.lunchBreakStart'),
-    commonValidations.time('workingHours.lunchBreakEnd'),
-    body('workingHours.workingDays')
-      .optional()
-      .isArray()
-      .withMessage('Working days must be an array'),
-    body('budget.annual')
-      .optional()
-      .isFloat({ min: 0 })
-      .withMessage('Annual budget must be a positive number'),
+      .isLength({ min: 1 })
+      .withMessage('Division code is required'),
     handleValidationErrors
   ],
 
   update: [
     commonValidations.mongoId('id'),
-    commonValidations.optionalString('name', 2, 100),
+    body('name')
+      .optional()
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage('Division name is required'),
     body('code')
       .optional()
       .trim()
-      .isLength({ min: 2, max: 10 })
-      .withMessage('Division code must be between 2 and 10 characters'),
-    commonValidations.optionalString('description', 500),
+      .isLength({ min: 1 })
+      .withMessage('Division code is required'),
+    body('description')
+      .optional()
+      .trim(),
     body('manager')
       .optional()
       .isMongoId()
@@ -701,13 +698,32 @@ const reportValidation = {
 // Authentication validation rules
 const authValidation = {
   login: [
-    body('email')
-      .isEmail()
-      .normalizeEmail()
-      .withMessage('Please provide a valid email address'),
-    body('password')
-      .notEmpty()
-      .withMessage('Password is required'),
+    body()
+      .custom((value, { req }) => {
+        const { email, employeeId, password } = req.body;
+        
+        // Check if password is provided
+        if (!password) {
+          throw new Error('Password is required');
+        }
+        
+        // Check if either email or employeeId is provided
+        if (!email && !employeeId) {
+          throw new Error('Please provide either email or employee ID');
+        }
+        
+        // Validate email format if provided
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new Error('Please provide a valid email address');
+        }
+        
+        // Validate employee ID format if provided
+        if (employeeId && !/^[A-Z]{2,3}\d{3,4}$/.test(employeeId)) {
+          throw new Error('Please provide a valid employee ID (e.g., SP001)');
+        }
+        
+        return true;
+      }),
     handleValidationErrors
   ],
 

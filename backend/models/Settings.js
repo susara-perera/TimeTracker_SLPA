@@ -81,12 +81,12 @@ const settingsSchema = new mongoose.Schema({
   permissions: {
     read: {
       type: [String],
-      enum: ['super_admin', 'admin', 'clerk', 'employee'],
+      enum: ['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'],
       default: ['super_admin', 'admin']
     },
     write: {
       type: [String],
-      enum: ['super_admin', 'admin'],
+      enum: ['super_admin', 'admin', 'administrative_clerk'],
       default: ['super_admin']
     }
   },

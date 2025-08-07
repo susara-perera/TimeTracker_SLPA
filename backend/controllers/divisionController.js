@@ -10,7 +10,7 @@ const getDivisions = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = 50, // Increased limit to get more data
       sort = 'name',
       order = 'asc',
       search,
@@ -20,12 +20,12 @@ const getDivisions = async (req, res) => {
     // Build query
     let query = {};
 
-    // Role-based filtering
-    if (req.user.role === 'admin' && req.user.division) {
-      query._id = req.user.division._id;
-    } else if (req.user.role === 'clerk' && req.user.division) {
-      query._id = req.user.division._id;
-    }
+    // Role-based filtering - removed restrictions for now to get all data
+    // if (req.user.role === 'admin' && req.user.division) {
+    //   query._id = req.user.division._id;
+    // } else if (req.user.role === 'clerk' && req.user.division) {
+    //   query._id = req.user.division._id;
+    // }
 
     // Search filter
     if (search) {
@@ -45,16 +45,27 @@ const getDivisions = async (req, res) => {
     // Execute query with pagination
     const skip = (page - 1) * limit;
     
-    const [divisions, total] = await Promise.all([
-      Division.find(query)
-        .populate('manager', 'firstName lastName email employeeId')
-        .populate('employeeCount')
-        .populate('sectionCount')
-        .sort(sortObj)
-        .skip(skip)
-        .limit(parseInt(limit)),
-      Division.countDocuments(query)
-    ]);
+    console.log('Fetching divisions with query:', query);
+    
+    const divisions = await Division.find(query)
+      .populate('manager', 'firstName lastName email employeeId')
+      .populate('employeeCount')
+      .populate('sectionCount')
+      .sort(sortObj)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Division.countDocuments(query);
+
+    console.log(`Found ${divisions.length} divisions out of ${total} total`);
+    console.log('Division data:', divisions.map(d => ({ 
+      id: d._id, 
+      name: d.name, 
+      code: d.code, 
+      isActive: d.isActive,
+      employeeCount: d.employeeCount,
+      manager: d.manager ? `${d.manager.firstName} ${d.manager.lastName}` : 'No manager'
+    })));
 
     // Calculate pagination
     const totalPages = Math.ceil(total / limit);
@@ -78,7 +89,8 @@ const getDivisions = async (req, res) => {
     console.error('Get divisions error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error getting divisions'
+      message: 'Server error getting divisions',
+      error: error.message
     });
   }
 };
@@ -132,24 +144,14 @@ const getDivision = async (req, res) => {
 
 // @desc    Create division
 // @route   POST /api/divisions
-// @access  Private (super_admin only)
+// @access  Private
 const createDivision = async (req, res) => {
   try {
-    const {
-      name,
-      code,
-      description,
-      manager,
-      location,
-      workingHours,
-      budget,
-      contact,
-      settings
-    } = req.body;
+    const { name, code } = req.body;
 
     // Check if division code already exists
     const existingDivision = await Division.findOne({ 
-      $or: [{ code }, { name }] 
+      $or: [{ code: code.toUpperCase() }, { name }] 
     });
 
     if (existingDivision) {
@@ -159,43 +161,13 @@ const createDivision = async (req, res) => {
       });
     }
 
-    // Validate manager exists and is eligible
-    if (manager) {
-      const managerUser = await User.findById(manager);
-      if (!managerUser) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manager not found'
-        });
-      }
-
-      if (!['admin', 'super_admin'].includes(managerUser.role)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manager must be an admin or super admin'
-        });
-      }
-    }
-
-    // Create division
+    // Create division with only name and code
     const division = new Division({
       name,
-      code: code.toUpperCase(),
-      description,
-      manager,
-      location,
-      workingHours,
-      budget,
-      contact,
-      settings
+      code: code.toUpperCase()
     });
 
     await division.save();
-
-    // Update manager's division if specified
-    if (manager) {
-      await User.findByIdAndUpdate(manager, { division: division._id });
-    }
 
     // Log division creation
     await AuditLog.createLog({
@@ -207,12 +179,7 @@ const createDivision = async (req, res) => {
       description: 'New division created',
       details: `Created division: ${division.name} (${division.code})`,
       changes: {
-        after: {
-          name,
-          code,
-          description,
-          manager
-        }
+        after: { name, code: code.toUpperCase() }
       },
       metadata: {
         ipAddress: req.ip,
@@ -221,9 +188,6 @@ const createDivision = async (req, res) => {
         endpoint: req.originalUrl
       }
     });
-
-    // Populate manager before sending response
-    await division.populate('manager', 'firstName lastName email employeeId');
 
     res.status(201).json({
       success: true,

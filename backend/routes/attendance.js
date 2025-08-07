@@ -88,7 +88,7 @@ router.get(
 router.get(
   '/',
   auth,
-  authorize('super_admin', 'admin', 'clerk', 'employee'),
+  authorize('super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'),
   queryValidation.pagination,
   queryValidation.dateRange,
   auditTrail('attendance_viewed', 'Attendance'),
@@ -111,7 +111,7 @@ router.get(
 router.put(
   '/:id',
   auth,
-  authorize('super_admin', 'admin', 'clerk'),
+  authorize('super_admin', 'admin', 'clerk', 'administrative_clerk'),
   checkPermission('attendance', 'update'),
   attendanceValidation.update,
   auditTrail('attendance_updated', 'Attendance'),

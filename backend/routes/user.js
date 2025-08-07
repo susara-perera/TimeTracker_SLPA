@@ -21,11 +21,11 @@ const router = express.Router();
 
 // @route   GET /api/users
 // @desc    Get all users
-// @access  Private (admin, super_admin, clerk)
+// @access  Private (admin, super_admin, clerk, administrative_clerk)
 router.get(
   '/',
   auth,
-  authorize('super_admin', 'admin', 'clerk'),
+  authorize('super_admin', 'admin', 'clerk', 'administrative_clerk'),
   queryValidation.pagination,
   auditTrail('users_viewed', 'User'),
   getUsers
@@ -33,11 +33,11 @@ router.get(
 
 // @route   GET /api/users/stats
 // @desc    Get user statistics
-// @access  Private (admin, super_admin)
+// @access  Private (admin, super_admin, administrative_clerk)
 router.get(
   '/stats',
   auth,
-  authorize('super_admin', 'admin'),
+  authorize('super_admin', 'admin', 'administrative_clerk'),
   auditTrail('user_stats_viewed', 'User'),
   getUserStats
 );
@@ -55,11 +55,11 @@ router.get(
 
 // @route   POST /api/users
 // @desc    Create user
-// @access  Private (admin, super_admin)
+// @access  Private (admin, super_admin, administrative_clerk)
 router.post(
   '/',
   auth,
-  authorize('super_admin', 'admin'),
+  authorize('super_admin', 'admin', 'administrative_clerk'),
   checkPermission('users', 'create'),
   userValidation.create,
   auditTrail('user_created', 'User'),
@@ -92,11 +92,11 @@ router.delete(
 
 // @route   PATCH /api/users/:id/toggle-status
 // @desc    Toggle user status (activate/deactivate)
-// @access  Private (admin, super_admin)
+// @access  Private (admin, super_admin, administrative_clerk)
 router.patch(
   '/:id/toggle-status',
   auth,
-  authorize('super_admin', 'admin'),
+  authorize('super_admin', 'admin', 'administrative_clerk'),
   checkPermission('users', 'update'),
   auditTrail('user_status_toggled', 'User'),
   toggleUserStatus

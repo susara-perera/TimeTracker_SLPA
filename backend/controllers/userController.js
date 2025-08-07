@@ -154,6 +154,7 @@ const createUser = async (req, res) => {
       email,
       employeeId,
       password,
+      confirmPassword,
       role,
       division,
       section,
@@ -163,6 +164,47 @@ const createUser = async (req, res) => {
       salary,
       permissions
     } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !email || !employeeId || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+
+    // Validate password confirmation
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Passwords do not match'
+      });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Validate role
+    const validRoles = ['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role specified'
+      });
+    }
+
+    // Division is required for all roles except super_admin
+    if (role !== 'super_admin' && !division) {
+      return res.status(400).json({
+        success: false,
+        message: 'Division is required for this role'
+      });
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({
@@ -224,7 +266,24 @@ const createUser = async (req, res) => {
         divisions: { create: false, read: true, update: false, delete: false },
         settings: { create: false, read: false, update: false, delete: false }
       };
-    } else if (role === 'employee') {
+    } else if (role === 'administrative_clerk') {
+      userPermissions = {
+        users: { create: true, read: true, update: true, delete: false },
+        attendance: { create: true, read: true, update: true, delete: false },
+        reports: { create: true, read: true, update: false, delete: false },
+        divisions: { create: false, read: true, update: false, delete: false },
+        settings: { create: false, read: true, update: false, delete: false }
+      };
+    } else if (role === 'super_admin') {
+      userPermissions = {
+        users: { create: true, read: true, update: true, delete: true },
+        attendance: { create: true, read: true, update: true, delete: true },
+        reports: { create: true, read: true, update: true, delete: true },
+        divisions: { create: true, read: true, update: true, delete: true },
+        settings: { create: true, read: true, update: true, delete: true }
+      };
+    } else {
+      // employee permissions
       userPermissions = {
         users: { create: false, read: false, update: false, delete: false },
         attendance: { create: true, read: true, update: false, delete: false },

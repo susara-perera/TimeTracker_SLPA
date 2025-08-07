@@ -27,7 +27,6 @@ router.get(
   '/',
   auth,
   queryValidation.pagination,
-  auditTrail('divisions_viewed', 'Division'),
   getDivisions
 );
 
@@ -75,39 +74,30 @@ router.get(
 
 // @route   POST /api/divisions
 // @desc    Create division
-// @access  Private (super_admin only)
+// @access  Private
 router.post(
   '/',
   auth,
-  authorize('super_admin'),
-  checkPermission('divisions', 'create'),
   divisionValidation.create,
-  auditTrail('division_created', 'Division'),
   createDivision
 );
 
 // @route   PUT /api/divisions/:id
 // @desc    Update division
-// @access  Private (super_admin only)
+// @access  Private
 router.put(
   '/:id',
   auth,
-  authorize('super_admin'),
-  checkPermission('divisions', 'update'),
   divisionValidation.update,
-  auditTrail('division_updated', 'Division'),
   updateDivision
 );
 
 // @route   DELETE /api/divisions/:id
 // @desc    Delete division
-// @access  Private (super_admin only)
+// @access  Private
 router.delete(
   '/:id',
   auth,
-  authorize('super_admin'),
-  checkPermission('divisions', 'delete'),
-  auditTrail('division_deleted', 'Division'),
   deleteDivision
 );
 

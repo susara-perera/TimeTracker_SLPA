@@ -9,6 +9,12 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockTimeLeft, setBlockTimeLeft] = useState(0);
+
   const { login } = useContext(AuthContext) || {};
   const navigate = useNavigate();
 
@@ -28,6 +34,11 @@ const Login = () => {
           opacity: 1;
           transform: translateY(0);
         }
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
 
       @keyframes float {
@@ -110,20 +121,184 @@ const Login = () => {
     `;
     document.head.appendChild(style);
 
+    // Check for existing login attempts in localStorage
+    const attempts = localStorage.getItem('loginAttempts');
+    const blockUntil = localStorage.getItem('blockUntil');
+    
+    if (attempts) {
+      setLoginAttempts(parseInt(attempts));
+    }
+    
+    if (blockUntil) {
+      const blockTime = new Date(blockUntil);
+      if (blockTime > new Date()) {
+        setIsBlocked(true);
+        const timeLeft = Math.ceil((blockTime - new Date()) / 1000);
+        setBlockTimeLeft(timeLeft);
+        
+        // Start countdown timer
+        const timer = setInterval(() => {
+          const remaining = Math.ceil((blockTime - new Date()) / 1000);
+          if (remaining <= 0) {
+            setIsBlocked(false);
+            setBlockTimeLeft(0);
+            localStorage.removeItem('blockUntil');
+            localStorage.removeItem('loginAttempts');
+            setLoginAttempts(0);
+            clearInterval(timer);
+          } else {
+            setBlockTimeLeft(remaining);
+          }
+        }, 1000);
+        
+        return () => clearInterval(timer);
+      } else {
+        localStorage.removeItem('blockUntil');
+        localStorage.removeItem('loginAttempts');
+      }
+    }
+
     return () => {
-      document.head.removeChild(style);
+      if (style.parentNode) {
+        document.head.removeChild(style);
+      }
     };
   }, []);
 
+  // Validation functions
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateEmployeeId = (id) => {
+    // Assuming employee ID format: SP001, EMP123, etc.
+    const idRegex = /^[A-Z]{2,3}\d{3,4}$/;
+    return idRegex.test(id);
+  };
+
+  const validateInput = (input) => {
+    const errors = {};
+    
+    if (!input.userId) {
+      errors.userId = 'User ID or Email is required';
+    } else if (!validateEmail(input.userId) && !validateEmployeeId(input.userId)) {
+      errors.userId = 'Please enter a valid email address or employee ID (e.g., SP001)';
+    }
+    
+    if (!input.password) {
+      errors.password = 'Password is required';
+    } else if (input.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters long';
+    }
+    
+    return errors;
+  };
+
+  const handleInputChange = (field, value) => {
+    if (field === 'userId') {
+      setUserId(value);
+    } else if (field === 'password') {
+      setPassword(value);
+    }
+    
+    // Clear validation error for this field
+    if (validationErrors[field]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+    
+    // Clear general error
+    if (error) {
+      setError('');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check if account is blocked
+    if (isBlocked) {
+      setError(`Account temporarily locked. Try again in ${Math.ceil(blockTimeLeft / 60)} minutes.`);
+      return;
+    }
+    
     setLoading(true);
     setError('');
+    setValidationErrors({});
+    
+    // Client-side validation
+    const input = { userId: userId.trim(), password };
+    const errors = validateInput(input);
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setLoading(false);
+      return;
+    }
+    
     try {
-      await login(userId, password);
+      // Prepare credentials object
+      const credentials = {};
+      
+      // Determine if input is email or employee ID
+      if (validateEmail(input.userId)) {
+        credentials.email = input.userId;
+      } else if (validateEmployeeId(input.userId)) {
+        credentials.employeeId = input.userId;
+      } else {
+        // Try as email if format is unclear
+        credentials.email = input.userId;
+      }
+      
+      credentials.password = input.password;
+      
+      const result = await login(credentials);
+      
+      // Clear login attempts on successful login
+      localStorage.removeItem('loginAttempts');
+      localStorage.removeItem('blockUntil');
+      setLoginAttempts(0);
+      
+      console.log('Login successful, navigating to dashboard...', result);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      console.error('Login error:', err);
+      
+      // Handle failed login attempt
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      localStorage.setItem('loginAttempts', newAttempts.toString());
+      
+      // Block account after 5 failed attempts
+      if (newAttempts >= 5) {
+        const blockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+        localStorage.setItem('blockUntil', blockUntil.toISOString());
+        setIsBlocked(true);
+        setBlockTimeLeft(15 * 60);
+        
+        // Start countdown timer
+        const timer = setInterval(() => {
+          const remaining = Math.ceil((blockUntil - new Date()) / 1000);
+          if (remaining <= 0) {
+            setIsBlocked(false);
+            setBlockTimeLeft(0);
+            localStorage.removeItem('blockUntil');
+            localStorage.removeItem('loginAttempts');
+            setLoginAttempts(0);
+            clearInterval(timer);
+          } else {
+            setBlockTimeLeft(remaining);
+          }
+        }, 1000);
+        
+        setError('Too many failed attempts. Account locked for 15 minutes.');
+      } else {
+        setError(err.message || 'Invalid credentials. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -350,9 +525,47 @@ const Login = () => {
                   fontSize: '14px',
                   border: '1px solid rgba(255, 99, 132, 0.3)',
                   backdropFilter: 'blur(10px)',
-                  textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                  textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+                  animation: 'slideInUp 0.3s ease-out'
                 }}>
+                  <i className="bi bi-exclamation-triangle" style={{ marginRight: '8px' }}></i>
                   {error}
+                </div>
+              )}
+
+              {/* Login attempts warning */}
+              {loginAttempts > 0 && loginAttempts < 5 && (
+                <div style={{
+                  background: 'rgba(255, 193, 7, 0.15)',
+                  color: '#ffc107',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  fontWeight: '600',
+                  fontSize: '13px',
+                  border: '1px solid rgba(255, 193, 7, 0.3)',
+                  backdropFilter: 'blur(10px)'
+                }}>
+                  <i className="bi bi-shield-exclamation" style={{ marginRight: '8px' }}></i>
+                  {5 - loginAttempts} attempts remaining before account lock
+                </div>
+              )}
+
+              {/* Account blocked message */}
+              {isBlocked && (
+                <div style={{
+                  background: 'rgba(220, 53, 69, 0.15)',
+                  color: '#dc3545',
+                  padding: '14px',
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  border: '1px solid rgba(220, 53, 69, 0.3)',
+                  backdropFilter: 'blur(10px)'
+                }}>
+                  <i className="bi bi-lock-fill" style={{ marginRight: '8px' }}></i>
+                  Account temporarily locked. Try again in {Math.ceil(blockTimeLeft / 60)} minutes.
                 </div>
               )}
 
@@ -374,44 +587,62 @@ const Login = () => {
                     color: '#c3e9ff',
                     filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3))'
                   }}></i>
-                  USER ID
+                  USER ID / EMAIL
                 </label>
                 <input
                   type="text"
-                  placeholder="Enter your User ID"
+                  placeholder="Enter your Employee ID or Email"
                   value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
+                  onChange={(e) => handleInputChange('userId', e.target.value)}
                   required
                   autoFocus
+                  disabled={isBlocked}
                   style={{
                     width: '100%',
                     padding: '16px 22px',
-                    border: '2px solid rgba(232, 244, 253, 0.3)',
+                    border: `2px solid ${validationErrors.userId ? 'rgba(255, 99, 132, 0.5)' : 'rgba(232, 244, 253, 0.3)'}`,
                     borderRadius: '12px',
                     outline: 'none',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    color: '#ffffff',
+                    background: isBlocked ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+                    color: isBlocked ? '#999' : '#ffffff',
                     fontSize: '16px',
                     fontWeight: '500',
                     transition: 'all 0.3s ease',
-                    backdropFilter: 'blur(10px)'
+                    backdropFilter: 'blur(10px)',
+                    opacity: isBlocked ? 0.6 : 1
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(232, 244, 253, 0.8)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.15)';
-                    e.target.style.transform = 'translateY(-2px)';
-                    e.target.style.boxShadow = `
-                      0 10px 25px rgba(0, 0, 0, 0.2),
-                      0 0 20px rgba(232, 244, 253, 0.3)
-                    `;
+                    if (!isBlocked) {
+                      e.target.style.borderColor = 'rgba(232, 244, 253, 0.8)';
+                      e.target.style.background = 'rgba(255, 255, 255, 0.15)';
+                      e.target.style.transform = 'translateY(-2px)';
+                      e.target.style.boxShadow = `
+                        0 10px 25px rgba(0, 0, 0, 0.2),
+                        0 0 20px rgba(232, 244, 253, 0.3)
+                      `;
+                    }
                   }}
                   onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(232, 244, 253, 0.3)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
-                    e.target.style.transform = 'translateY(0)';
-                    e.target.style.boxShadow = 'none';
+                    if (!isBlocked) {
+                      e.target.style.borderColor = validationErrors.userId ? 'rgba(255, 99, 132, 0.5)' : 'rgba(232, 244, 253, 0.3)';
+                      e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                      e.target.style.transform = 'translateY(0)';
+                      e.target.style.boxShadow = 'none';
+                    }
                   }}
                 />
+                {validationErrors.userId && (
+                  <div style={{
+                    color: '#ff6384',
+                    fontSize: '12px',
+                    marginTop: '5px',
+                    fontWeight: '500',
+                    animation: 'slideInUp 0.2s ease-out'
+                  }}>
+                    <i className="bi bi-exclamation-circle" style={{ marginRight: '5px' }}></i>
+                    {validationErrors.userId}
+                  </div>
+                )}
               </div>
 
               {/* Password Field */}
@@ -426,7 +657,7 @@ const Login = () => {
                   textTransform: 'uppercase',
                   letterSpacing: '1px'
                 }}>
-                  <i className="bi bi-lock-closed" style={{ 
+                  <i className="bi bi-shield-lock" style={{ 
                     marginRight: '10px', 
                     opacity: '0.9', 
                     color: '#c3e9ff',
@@ -434,41 +665,123 @@ const Login = () => {
                   }}></i>
                   PASSWORD
                 </label>
-                <input
-                  type="password"
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '16px 22px',
-                    border: '2px solid rgba(232, 244, 253, 0.3)',
-                    borderRadius: '12px',
-                    outline: 'none',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    color: '#ffffff',
-                    fontSize: '16px',
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    required
+                    disabled={isBlocked}
+                    minLength={6}
+                    style={{
+                      width: '100%',
+                      padding: '16px 55px 16px 22px',
+                      border: `2px solid ${validationErrors.password ? 'rgba(255, 99, 132, 0.5)' : 'rgba(232, 244, 253, 0.3)'}`,
+                      borderRadius: '12px',
+                      outline: 'none',
+                      background: isBlocked ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+                      color: isBlocked ? '#999' : '#ffffff',
+                      fontSize: '16px',
+                      fontWeight: '500',
+                      transition: 'all 0.3s ease',
+                      backdropFilter: 'blur(10px)',
+                      opacity: isBlocked ? 0.6 : 1
+                    }}
+                    onFocus={(e) => {
+                      if (!isBlocked) {
+                        e.target.style.borderColor = 'rgba(232, 244, 253, 0.8)';
+                        e.target.style.background = 'rgba(255, 255, 255, 0.15)';
+                        e.target.style.transform = 'translateY(-2px)';
+                        e.target.style.boxShadow = `
+                          0 10px 25px rgba(0, 0, 0, 0.2),
+                          0 0 20px rgba(232, 244, 253, 0.3)
+                        `;
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (!isBlocked) {
+                        e.target.style.borderColor = validationErrors.password ? 'rgba(255, 99, 132, 0.5)' : 'rgba(232, 244, 253, 0.3)';
+                        e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                        e.target.style.transform = 'translateY(0)';
+                        e.target.style.boxShadow = 'none';
+                      }
+                    }}
+                  />
+                  {/* Password visibility toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isBlocked}
+                    style={{
+                      position: 'absolute',
+                      right: '15px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      border: 'none',
+                      color: isBlocked ? '#666' : '#c3e9ff',
+                      fontSize: '18px',
+                      cursor: isBlocked ? 'not-allowed' : 'pointer',
+                      opacity: isBlocked ? 0.5 : 0.8,
+                      transition: 'opacity 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isBlocked) {
+                        e.target.style.opacity = '1';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isBlocked) {
+                        e.target.style.opacity = '0.8';
+                      }
+                    }}
+                  >
+                    <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
+                  </button>
+                </div>
+                {validationErrors.password && (
+                  <div style={{
+                    color: '#ff6384',
+                    fontSize: '12px',
+                    marginTop: '5px',
                     fontWeight: '500',
-                    transition: 'all 0.3s ease',
-                    backdropFilter: 'blur(10px)'
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(232, 244, 253, 0.8)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.15)';
-                    e.target.style.transform = 'translateY(-2px)';
-                    e.target.style.boxShadow = `
-                      0 10px 25px rgba(0, 0, 0, 0.2),
-                      0 0 20px rgba(232, 244, 253, 0.3)
-                    `;
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(232, 244, 253, 0.3)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
-                    e.target.style.transform = 'translateY(0)';
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
+                    animation: 'slideInUp 0.2s ease-out'
+                  }}>
+                    <i className="bi bi-exclamation-circle" style={{ marginRight: '5px' }}></i>
+                    {validationErrors.password}
+                  </div>
+                )}
+                
+                {/* Password strength indicator */}
+                {password && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{
+                      fontSize: '11px',
+                      color: '#c3e9ff',
+                      marginBottom: '4px',
+                      opacity: 0.8
+                    }}>
+                      Password Strength:
+                    </div>
+                    <div style={{
+                      width: '100%',
+                      height: '3px',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '2px',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.min((password.length / 12) * 100, 100)}%`,
+                        background: password.length < 6 ? '#ff6384' : 
+                                  password.length < 8 ? '#ffc107' : '#28a745',
+                        transition: 'all 0.3s ease',
+                        borderRadius: '2px'
+                      }}></div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Forgot Password */}
@@ -499,7 +812,8 @@ const Login = () => {
                     e.target.style.transform = 'translateY(0)';
                   }}
                 >
-                  forgot password?
+                  <i className="bi bi-key" style={{ marginRight: '6px' }}></i>
+                  Lost your password and advanced recovery?
                 </button>
               </div>
 
@@ -507,62 +821,90 @@ const Login = () => {
               <div style={{ marginTop: '25px' }}>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isBlocked}
                   style={{
                     width: '100%',
                     padding: '18px',
                     fontSize: '18px',
                     fontWeight: '800',
-                    color: '#ffffff',
+                    color: isBlocked ? '#999' : '#ffffff',
                     border: 'none',
                     borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #4a90e2 0%, #357abd 50%, #2c5aa0 100%)',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.4s ease',
+                    background: isBlocked 
+                      ? 'linear-gradient(135deg, #666 0%, #555 50%, #444 100%)'
+                      : loading 
+                        ? 'linear-gradient(135deg, #888 0%, #666 50%, #555 100%)'
+                        : 'linear-gradient(135deg, #4a90e2 0%, #357abd 50%, #2c5aa0 100%)',
+                    cursor: loading || isBlocked ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.3s ease',
                     textTransform: 'uppercase',
                     letterSpacing: '2px',
-                    boxShadow: `
-                      0 10px 30px rgba(74, 144, 226, 0.4),
-                      inset 0 1px 0 rgba(255, 255, 255, 0.2)
-                    `,
-                    position: 'relative',
-                    overflow: 'hidden'
+                    boxShadow: loading || isBlocked 
+                      ? 'none' 
+                      : `
+                        0 8px 25px rgba(74, 144, 226, 0.4),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.2)
+                      `,
+                    textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+                    opacity: isBlocked ? 0.6 : 1
                   }}
                   onMouseEnter={(e) => {
-                    if (!loading) {
+                    if (!loading && !isBlocked) {
                       e.target.style.background = 'linear-gradient(135deg, #357abd 0%, #2c5aa0 50%, #1e3f73 100%)';
                       e.target.style.transform = 'translateY(-4px)';
                       e.target.style.boxShadow = `
-                        0 20px 40px rgba(74, 144, 226, 0.6),
+                        0 15px 35px rgba(74, 144, 226, 0.6),
                         inset 0 1px 0 rgba(255, 255, 255, 0.3)
                       `;
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!loading) {
+                    if (!loading && !isBlocked) {
                       e.target.style.background = 'linear-gradient(135deg, #4a90e2 0%, #357abd 50%, #2c5aa0 100%)';
                       e.target.style.transform = 'translateY(0)';
                       e.target.style.boxShadow = `
-                        0 10px 30px rgba(74, 144, 226, 0.4),
+                        0 8px 25px rgba(74, 144, 226, 0.4),
                         inset 0 1px 0 rgba(255, 255, 255, 0.2)
                       `;
                     }
                   }}
-                  onMouseDown={(e) => {
-                    if (!loading) {
-                      e.target.style.transform = 'translateY(-1px)';
-                    }
-                  }}
                 >
                   {loading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      LOGGING IN...
-                    </>
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                      <i className="bi bi-arrow-clockwise" style={{ 
+                        animation: 'spin 1s linear infinite', 
+                        fontSize: '16px' 
+                      }}></i>
+                      Authenticating...
+                    </span>
+                  ) : isBlocked ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                      <i className="bi bi-lock-fill"></i>
+                      Account Locked
+                    </span>
                   ) : (
-                    'LOGIN'
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                      <i className="bi bi-box-arrow-in-right"></i>
+                      Secure Login
+                    </span>
                   )}
                 </button>
+              </div>
+
+              {/* Security Information */}
+              <div style={{
+                marginTop: '20px',
+                padding: '12px',
+                background: 'rgba(32, 201, 151, 0.1)',
+                border: '1px solid rgba(32, 201, 151, 0.3)',
+                borderRadius: '8px',
+                textAlign: 'center',
+                fontSize: '12px',
+                color: '#20c997',
+                fontWeight: '500'
+              }}>
+                <i className="bi bi-shield-check" style={{ marginRight: '6px' }}></i>
+                Your login is secured with advanced encryption
               </div>
             </form>
           </div>

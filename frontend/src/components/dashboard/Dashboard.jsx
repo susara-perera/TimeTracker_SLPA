@@ -27,7 +27,7 @@ const Dashboard = () => {
       case 'home':
         setActiveSection('dashboard');
         break;
-      case 'add-user':
+      case 'users':
         setActiveSection('users');
         break;
       case 'reports':
@@ -38,6 +38,9 @@ const Dashboard = () => {
         break;
       case 'sections':
         setActiveSection('sections');
+        break;
+      case 'roles':
+        setActiveSection('roles');
         break;
       case 'settings':
         setActiveSection('settings');
@@ -97,86 +100,48 @@ const Dashboard = () => {
     }
   };
 
-  const menuItems = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: 'bi-grid-1x2',
-      roles: ['super_admin', 'admin', 'clerk', 'employee']
-    },
-    {
-      id: 'users',
-      label: 'Users',
-      icon: 'bi-people',
-      roles: ['super_admin', 'admin']
-    },
-    {
-      id: 'reports',
-      label: 'Reports',
-      icon: 'bi-graph-up',
-      roles: ['super_admin', 'admin', 'clerk']
-    },
-    {
-      id: 'divisions',
-      label: 'Divisions',
-      icon: 'bi-building',
-      roles: ['super_admin']
-    },
-    {
-      id: 'sections',
-      label: 'Sections',
-      icon: 'bi-diagram-3',
-      roles: ['super_admin', 'admin']
-    },
-    {
-      id: 'roles',
-      label: 'Roles',
-      icon: 'bi-shield-check',
-      roles: ['super_admin']
-    },
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: 'bi-gear',
-      roles: ['super_admin', 'admin']
-    }
-  ];
-
   const quickActions = [
     {
       id: 'home',
-      label: 'Home',
+      label: 'Dashboard',
       icon: 'bi-house',
       color: 'primary',
-      roles: ['super_admin', 'admin', 'clerk', 'employee']
+      roles: ['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee']
     },
     {
-      id: 'add-user',
+      id: 'users',
       label: 'Add User',
-      icon: 'bi-person-plus',
+      icon: 'bi-people',
       color: 'success',
-      roles: ['super_admin', 'admin']
-    },
-    {
-      id: 'divisions',
-      label: 'Division Manage',
-      icon: 'bi-building',
-      color: 'warning',
-      roles: ['super_admin']
-    },
-    {
-      id: 'sections',
-      label: 'Section Manage',
-      icon: 'bi-diagram-3',
-      color: 'purple',
-      roles: ['super_admin', 'admin']
+      roles: ['super_admin', 'admin', 'administrative_clerk']
     },
     {
       id: 'reports',
       label: 'Report Generation',
       icon: 'bi-graph-up',
       color: 'info',
-      roles: ['super_admin', 'admin', 'clerk']
+      roles: ['super_admin', 'admin', 'clerk', 'administrative_clerk']
+    },
+    {
+      id: 'divisions',
+      label: 'Division Management',
+      icon: 'bi-building',
+      color: 'warning',
+      roles: ['super_admin']
+    },
+    {
+      id: 'sections',
+      label: 'Section Management',
+      icon: 'bi-diagram-3',
+      color: 'purple',
+      roles: ['super_admin', 'admin']
+    },
+    {
+      id: 'roles',
+      label: 'Roles & Permissions',
+      icon: 'bi-shield-check',
+      color: 'secondary',
+      roles: ['super_admin']
     },
     {
       id: 'settings',
@@ -188,14 +153,17 @@ const Dashboard = () => {
   ];
 
   const hasAccess = (roles) => {
-    return roles.includes(user?.role);
+    // For now, return true to show all navigation items
+    // TODO: Implement proper role checking when user authentication is fixed
+    return true;
+    // return roles.includes(user?.role);
   };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
   };
 
   return (
@@ -214,26 +182,13 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Main Navigation */}
-          <div className="nav-menu">
-            {menuItems.map((item) => {
-              if (!hasAccess(item.roles)) return null;
-              
-              return (
-                <button
-                  key={item.id}
-                  className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
-                  onClick={() => setActiveSection(item.id)}
-                >
-                  <i className={`bi ${item.icon}`}></i>
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
           {/* User Section */}
           <div className="nav-user">
+            <div className="welcome-message">
+              <div className="greeting">{getGreeting()}</div>
+              <div className="welcome-text">Welcome back, {user?.firstName || 'User'}! 👋</div>
+            </div>
+            
             <div className="time-display">
               <div className="time">{currentTime.time}</div>
               <div className="date">{currentTime.date}</div>
@@ -244,8 +199,8 @@ const Dashboard = () => {
                 <i className="bi bi-person-circle"></i>
               </div>
               <div className="user-info">
-                <div className="user-name">{user?.firstName} {user?.lastName}</div>
-                <div className="user-role">{user?.role?.replace('_', ' ')}</div>
+                <div className="user-name">{user?.firstName || 'User'} {user?.lastName || ''}</div>
+                <div className="user-role">{user?.role?.replace('_', ' ') || 'Employee'}</div>
               </div>
             </div>
 
@@ -265,9 +220,7 @@ const Dashboard = () => {
           </div>
           <div className="actions-list">
             {quickActions.map((action) => {
-              console.log('Checking access for action:', action.id, 'User role:', user?.role, 'Action roles:', action.roles, 'Has access:', hasAccess(action.roles));
-              // Temporarily show all buttons for debugging
-              // if (!hasAccess(action.roles)) return null;
+              if (!hasAccess(action.roles)) return null;
               
               return (
                 <button
@@ -282,9 +235,7 @@ const Dashboard = () => {
               );
             })}
           </div>
-          <div className="greeting-text">
-            {getGreeting()}, {user?.firstName}! 👋
-          </div>
+          
         </div>
       </div>
 

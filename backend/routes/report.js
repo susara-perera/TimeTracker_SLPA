@@ -33,11 +33,11 @@ router.get(
 
 // @route   GET /api/reports/audit
 // @desc    Get audit report
-// @access  Private (administrator and super_admin only)
+// @access  Private (admin, administrative_clerk and super_admin only)
 router.get(
   '/audit',
   auth,
-  authorize(['administrator', 'super_admin']),
+  authorize('admin', 'administrative_clerk', 'super_admin'),
   checkPermission('reports', 'audit'),
   reportValidation.auditReport,
   auditTrail('audit_report_generated', 'Report'),
@@ -79,11 +79,11 @@ router.get(
 
 // @route   GET /api/reports/user-activity
 // @desc    Get user activity report
-// @access  Private (administrator and super_admin only)
+// @access  Private (admin, administrative_clerk and super_admin only)
 router.get(
   '/user-activity',
   auth,
-  authorize(['administrator', 'super_admin']),
+  authorize('admin', 'administrative_clerk', 'super_admin'),
   checkPermission('reports', 'user_activity'),
   reportValidation.userActivityReport,
   auditTrail('user_activity_report_generated', 'Report'),
@@ -103,11 +103,11 @@ router.get(
 
 // @route   POST /api/reports/custom
 // @desc    Generate custom report
-// @access  Private (administrator and super_admin only)
+// @access  Private (admin, administrative_clerk and super_admin only)
 router.post(
   '/custom',
   auth,
-  authorize(['administrator', 'super_admin']),
+  authorize('admin', 'administrative_clerk', 'super_admin'),
   checkPermission('reports', 'custom'),
   reportValidation.customReport,
   auditTrail('custom_report_generated', 'Report'),
