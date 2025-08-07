@@ -5,7 +5,6 @@ const DivisionManagement = () => {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [currentDivision, setCurrentDivision] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -204,7 +203,6 @@ const DivisionManagement = () => {
   const handleCloseModal = () => {
     setShowAddModal(false);
     setShowEditModal(false);
-    setShowDeleteModal(false);
     setCurrentDivision(null);
     setFormData({ name: '', code: '' });
     setFormErrors({});
@@ -321,74 +319,77 @@ const DivisionManagement = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h3>
+              <h2>
                 <i className={currentDivision ? "bi bi-pencil-square" : "bi bi-plus-circle"}></i> 
                 {currentDivision ? 'Edit Division' : 'Add New Division'}
-              </h3>
+              </h2>
               <button 
-                className="close-btn"
+                className="modal-close"
                 onClick={handleCloseModal}
               >
                 <i className="bi bi-x"></i>
               </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="division-form">
-              <div className="form-group">
-                <label htmlFor="name">Division Name *</label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className={formErrors.name ? 'error' : ''}
-                  placeholder="Enter division name"
-                />
-                {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-              </div>
+            <div className="modal-body">
+              <form onSubmit={handleSubmit} className="division-form">
+                <div className="form-group">
+                  <label htmlFor="name">Division Name *</label>
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className={`form-control ${formErrors.name ? 'error' : ''}`}
+                    placeholder="Enter division name"
+                  />
+                  {formErrors.name && <span className="error-text">{formErrors.name}</span>}
+                </div>
 
-              <div className="form-group">
-                <label htmlFor="code">Division Code *</label>
-                <input
-                  type="text"
-                  id="code"
-                  name="code"
-                  value={formData.code}
-                  onChange={handleInputChange}
-                  className={formErrors.code ? 'error' : ''}
-                  placeholder="Enter division code (e.g., ENG, HR)"
-                />
-                {formErrors.code && <span className="error-text">{formErrors.code}</span>}
-              </div>
+                <div className="form-group">
+                  <label htmlFor="code">Division Code *</label>
+                  <input
+                    type="text"
+                    id="code"
+                    name="code"
+                    value={formData.code}
+                    onChange={handleInputChange}
+                    className={`form-control ${formErrors.code ? 'error' : ''}`}
+                    placeholder="Enter division code (e.g., ENG, HR)"
+                  />
+                  {formErrors.code && <span className="error-text">{formErrors.code}</span>}
+                </div>
+              </form>
+            </div>
 
-              <div className="modal-actions">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={handleCloseModal}
-                  disabled={submitting}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-primary"
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <i className="bi bi-hourglass-split"></i> {currentDivision ? 'Updating...' : 'Adding...'}
-                    </>
-                  ) : (
-                    <>
-                      <i className={currentDivision ? "bi bi-check-circle" : "bi bi-plus-circle"}></i> 
-                      {currentDivision ? 'Update Division' : 'Add Division'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn-professional btn-secondary"
+                onClick={handleCloseModal}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-professional btn-primary"
+                onClick={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <i className="bi bi-hourglass-split"></i> {currentDivision ? 'Updating...' : 'Adding...'}
+                  </>
+                ) : (
+                  <>
+                    <i className={currentDivision ? "bi bi-check-circle" : "bi bi-plus-circle"}></i> 
+                    {currentDivision ? 'Update Division' : 'Add Division'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
