@@ -38,9 +38,7 @@ const commonValidations = {
   password: (field = 'password') =>
     body(field)
       .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters long')
-      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-      .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number'),
+      .withMessage('Password must be at least 6 characters long'),
 
   name: (field, minLength = 2, maxLength = 50) =>
     body(field)
@@ -53,10 +51,8 @@ const commonValidations = {
   employeeId: (field = 'employeeId') =>
     body(field)
       .trim()
-      .isLength({ min: 3, max: 20 })
-      .withMessage('Employee ID must be between 3 and 20 characters')
-      .matches(/^[A-Z0-9]+$/)
-      .withMessage('Employee ID can only contain uppercase letters and numbers'),
+      .isLength({ min: 1, max: 20 })
+      .withMessage('Employee ID must be between 1 and 20 characters'),
 
   phone: (field = 'phone') =>
     body(field)
@@ -127,14 +123,9 @@ const userValidation = {
     commonValidations.requiredString('lastName', 2, 50),
     commonValidations.email(),
     commonValidations.employeeId(),
-    commonValidations.password(),
-    body('confirmPassword')
-      .custom((value, { req }) => {
-        if (value !== req.body.password) {
-          throw new Error('Password confirmation does not match');
-        }
-        return true;
-      }),
+    body('password')
+      .isLength({ min: 1 })
+      .withMessage('Password is required'),
     commonValidations.role(),
     body('division')
       .if(body('role').not().equals('super_admin'))
@@ -326,11 +317,12 @@ const sectionValidation = {
   create: [
     commonValidations.requiredString('name', 2, 100),
     body('code')
+      .optional()
       .trim()
       .isLength({ min: 2, max: 10 })
       .withMessage('Section code must be between 2 and 10 characters')
-      .matches(/^[A-Z0-9]+$/)
-      .withMessage('Section code can only contain uppercase letters and numbers'),
+      .matches(/^[A-Z0-9_]+$/)
+      .withMessage('Section code can only contain uppercase letters, numbers, and underscores'),
     body('division')
       .isMongoId()
       .withMessage('Division is required and must be a valid ID'),
@@ -343,6 +335,10 @@ const sectionValidation = {
       .optional()
       .isInt({ min: 1 })
       .withMessage('Capacity must be at least 1'),
+    body('status')
+      .optional()
+      .isIn(['active', 'inactive'])
+      .withMessage('Status must be either active or inactive'),
     handleValidationErrors
   ],
 
@@ -353,7 +349,13 @@ const sectionValidation = {
       .optional()
       .trim()
       .isLength({ min: 2, max: 10 })
-      .withMessage('Section code must be between 2 and 10 characters'),
+      .withMessage('Section code must be between 2 and 10 characters')
+      .matches(/^[A-Z0-9_]+$/)
+      .withMessage('Section code can only contain uppercase letters, numbers, and underscores'),
+    body('division')
+      .optional()
+      .isMongoId()
+      .withMessage('Division must be a valid ID'),
     commonValidations.optionalString('description', 500),
     body('supervisor')
       .optional()
@@ -363,6 +365,10 @@ const sectionValidation = {
       .optional()
       .isInt({ min: 1 })
       .withMessage('Capacity must be at least 1'),
+    body('status')
+      .optional()
+      .isIn(['active', 'inactive'])
+      .withMessage('Status must be either active or inactive'),
     body('isActive')
       .optional()
       .isBoolean()

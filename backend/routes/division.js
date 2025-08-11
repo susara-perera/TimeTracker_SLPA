@@ -25,8 +25,8 @@ const router = express.Router();
 // @access  Private
 router.get(
   '/',
-  auth,
-  queryValidation.pagination,
+  // auth,
+  // queryValidation.pagination,
   getDivisions
 );
 

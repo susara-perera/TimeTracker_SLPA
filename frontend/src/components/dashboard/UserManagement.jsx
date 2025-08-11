@@ -17,33 +17,64 @@ const UserManagement = () => {
     section: ''
   });
   const [divisions, setDivisions] = useState([]);
+  const [sections, setSections] = useState([]);
+
+  // Helper function to get division name by ID
+  const getDivisionName = (divisionId) => {
+    const division = divisions.find(div => (div._id || div.id) === divisionId);
+    return division ? division.name : 'N/A';
+  };
+
+  // Helper function to get section name by ID
+  const getSectionName = (sectionId) => {
+    const section = sections.find(sec => (sec._id || sec.id) === sectionId);
+    return section ? section.name : 'N/A';
+  };
 
   useEffect(() => {
     // Fetch users and divisions from API
     const fetchData = async () => {
       try {
-        setLoading(false);
+        const token = localStorage.getItem('token');
         
-        // Fetch users - replace with actual API call
-        const usersResponse = [
-          {
-            id: 1,
-            firstName: 'Susara',
-            lastName: 'Perera',
-            email: 'susara_perera@admin',
-            role: 'super_admin',
-            employeeId: 'SP001',
-            status: 'active',
-            division: 'Administration',
-            section: 'IT'
-          }
-        ];
-        setUsers(usersResponse);
-        
-        // Fetch divisions - replace with actual API call
+        // Fetch users from database
         try {
-          const token = localStorage.getItem('token');
-          const divisionsResponse = await fetch('/api/divisions', {
+          const usersResponse = await fetch('http://localhost:5000/api/users', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (usersResponse.ok) {
+            const usersData = await usersResponse.json();
+            // Map the data to match frontend structure
+            const mappedUsers = usersData.data.map(user => ({
+              id: user._id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              role: user.role,
+              employeeId: user.employeeId,
+              status: user.isActive ? 'active' : 'inactive',
+              division: user.division?._id || user.division,
+              section: user.section?._id || user.section,
+              divisionName: user.division?.name,
+              sectionName: user.section?.name
+            }));
+            setUsers(mappedUsers);
+          } else {
+            console.error('Failed to fetch users');
+            setUsers([]);
+          }
+        } catch (userError) {
+          console.error('Error fetching users:', userError);
+          setUsers([]);
+        }
+        
+        // Fetch divisions from database
+        try {
+          const divisionsResponse = await fetch('http://localhost:5000/api/divisions', {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
@@ -54,30 +85,36 @@ const UserManagement = () => {
             const divisionsData = await divisionsResponse.json();
             setDivisions(divisionsData.data || []);
           } else {
-            // Fallback to mock data if API fails
-            setDivisions([
-              { _id: '1', name: 'Administration', code: 'ADM' },
-              { _id: '2', name: 'Operations', code: 'OPS' },
-              { _id: '3', name: 'Finance', code: 'FIN' },
-              { _id: '4', name: 'Engineering', code: 'ENG' },
-              { _id: '5', name: 'Human Resources', code: 'HR' },
-              { _id: '6', name: 'Security', code: 'SEC' },
-              { _id: '7', name: 'Marine Services', code: 'MAR' }
-            ]);
+            console.error('Failed to fetch divisions');
+            setDivisions([]);
           }
         } catch (divisionError) {
           console.error('Error fetching divisions:', divisionError);
-          // Use mock data as fallback
-          setDivisions([
-            { _id: '1', name: 'Administration', code: 'ADM' },
-            { _id: '2', name: 'Operations', code: 'OPS' },
-            { _id: '3', name: 'Finance', code: 'FIN' },
-            { _id: '4', name: 'Engineering', code: 'ENG' },
-            { _id: '5', name: 'Human Resources', code: 'HR' },
-            { _id: '6', name: 'Security', code: 'SEC' },
-            { _id: '7', name: 'Marine Services', code: 'MAR' }
-          ]);
+          setDivisions([]);
         }
+
+        // Fetch sections from database
+        try {
+          const sectionsResponse = await fetch('http://localhost:5000/api/sections', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (sectionsResponse.ok) {
+            const sectionsData = await sectionsResponse.json();
+            setSections(sectionsData.data || []);
+          } else {
+            console.error('Failed to fetch sections');
+            setSections([]);
+          }
+        } catch (sectionError) {
+          console.error('Error fetching sections:', sectionError);
+          setSections([]);
+        }
+        
+        setLoading(false);
         
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -120,17 +157,36 @@ const UserManagement = () => {
     setShowAddModal(true);
   };
 
-  const handleDeleteUser = (userId) => {
+  const handleDeleteUser = async (userId) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
-      setUsers(users.filter(user => user.id !== userId));
-      // TODO: Implement actual API call to delete user
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          setUsers(users.filter(user => user.id !== userId));
+          alert('User deleted successfully!');
+        } else {
+          const error = await response.json();
+          alert(error.message || 'Failed to delete user');
+        }
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        alert('Error deleting user. Please try again.');
+      }
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate password confirmation for new users
+    // Check if passwords match when adding a new user
     if (!editingUser && formData.password !== formData.confirmPassword) {
       alert('Passwords do not match!');
       return;
@@ -146,27 +202,94 @@ const UserManagement = () => {
       alert('Password is required for new users!');
       return;
     }
-    
-    if (editingUser) {
-      // Update existing user
-      setUsers(users.map(user => 
-        user.id === editingUser.id 
-          ? { ...user, ...formData, id: editingUser.id, status: user.status }
-          : user
-      ));
-    } else {
-      // Add new user
-      const newUser = {
-        ...formData,
-        id: Date.now(), // Temporary ID
-        status: 'active'
+
+    try {
+      const token = localStorage.getItem('token');
+      const userData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        employeeId: formData.employeeId,
+        role: formData.role,
+        division: formData.division || undefined,
+        section: formData.section || undefined
       };
-      setUsers([...users, newUser]);
+
+      if (!editingUser) {
+        userData.password = formData.password;
+      } else if (formData.password) {
+        userData.password = formData.password;
+      }
+
+      let response;
+      if (editingUser) {
+        // Update existing user
+        response = await fetch(`http://localhost:5000/api/users/${editingUser.id}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(userData)
+        });
+      } else {
+        // Create new user
+        response = await fetch('http://localhost:5000/api/users', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(userData)
+        });
+      }
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (editingUser) {
+          // Update existing user in state
+          setUsers(users.map(user => 
+            user.id === editingUser.id 
+              ? {
+                  ...user,
+                  firstName: formData.firstName,
+                  lastName: formData.lastName,
+                  email: formData.email,
+                  employeeId: formData.employeeId,
+                  role: formData.role,
+                  division: formData.division,
+                  section: formData.section
+                }
+              : user
+          ));
+        } else {
+          // Add new user to state
+          const newUser = {
+            id: result.data._id,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            employeeId: formData.employeeId,
+            role: formData.role,
+            status: 'active',
+            division: formData.division,
+            section: formData.section
+          };
+          setUsers([...users, newUser]);
+        }
+        
+        setShowAddModal(false);
+        setEditingUser(null);
+        alert(editingUser ? 'User updated successfully!' : 'User created successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to save user');
+      }
+    } catch (error) {
+      console.error('Error saving user:', error);
+      alert('Error saving user. Please try again.');
     }
-    
-    setShowAddModal(false);
-    setEditingUser(null);
-    // TODO: Implement actual API call
   };
 
   const handleInputChange = (e) => {
@@ -227,8 +350,8 @@ const UserManagement = () => {
                       {user.role.replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
-                  <td>{user.division || 'N/A'}</td>
-                  <td>{user.section || 'N/A'}</td>
+                  <td>{getDivisionName(user.division)}</td>
+                  <td>{getSectionName(user.section)}</td>
                   <td>
                     <span className={`status-badge status-${user.status}`}>
                       {user.status.toUpperCase()}
@@ -383,14 +506,11 @@ const UserManagement = () => {
                   onChange={handleInputChange}
                 >
                   <option value="">Select Section</option>
-                  <option value="IT">IT</option>
-                  <option value="Marine">Marine</option>
-                  <option value="Accounts">Accounts</option>
-                  <option value="Procurement">Procurement</option>
-                  <option value="Security">Security</option>
-                  <option value="Administration">Administration</option>
-                  <option value="Operations">Operations</option>
-                  <option value="Engineering">Engineering</option>
+                  {sections.map(section => (
+                    <option key={section._id || section.id} value={section._id || section.id}>
+                      {section.name} ({section.code})
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -405,7 +525,7 @@ const UserManagement = () => {
                     onChange={handleInputChange}
                     placeholder={editingUser ? "Leave blank to keep current password" : "Enter password"}
                     required={!editingUser}
-                    minLength="6"
+                    minLength="1"
                   />
                 </div>
                 <div className="form-group">
@@ -418,7 +538,7 @@ const UserManagement = () => {
                     onChange={handleInputChange}
                     placeholder={editingUser ? "Leave blank to keep current password" : "Confirm password"}
                     required={!editingUser}
-                    minLength="6"
+                    minLength="1"
                   />
                 </div>
               </div>

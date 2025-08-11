@@ -219,177 +219,152 @@ const DivisionManagement = () => {
 
   return (
     <div className="division-management">
-      <div className="page-header">
+      <div className="section-header">
         <h2><i className="bi bi-building"></i> Division Management</h2>
         <button 
-          className="btn btn-primary"
+          className="btn-professional btn-primary"
           onClick={handleAdd}
         >
           <i className="bi bi-plus-circle"></i> Add Division
         </button>
       </div>
 
-      <div className="divisions-grid">
-        {divisions.length === 0 ? (
-          <div className="no-divisions-message">
-            <div className="no-data-content">
-              <div className="no-data-icon">
-                <i className="bi bi-building-x"></i>
-              </div>
-              <h3>No Divisions Found</h3>
-              <p>There are no divisions in the database yet. Create your first division to get started.</p>
-              <button 
-                className="btn btn-primary"
-                onClick={handleAdd}
-              >
-                <i className="bi bi-plus-circle"></i> Add First Division
-              </button>
-            </div>
+      {/* Professional Divisions Table */}
+      <div className="professional-card">
+        <div className="table-responsive">
+          <table className="professional-table">
+            <thead>
+              <tr>
+                <th>Division Code</th>
+                <th>Division Name</th>
+                <th>Employees</th>
+                <th>Status</th>
+                <th>Created Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {divisions.map(division => (
+                <tr key={division._id}>
+                  <td>
+                    <span className="role-badge role-admin">
+                      {division.code}
+                    </span>
+                  </td>
+                  <td><strong>{division.name}</strong></td>
+                  <td>{division.employeeCount || 0}</td>
+                  <td>
+                    <span className={`status-badge ${division.isActive ? 'status-active' : 'status-inactive'}`}>
+                      {division.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td>
+                    {division.createdAt ? new Date(division.createdAt).toLocaleDateString() : 'N/A'}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        className="btn-professional btn-primary"
+                        onClick={() => handleEdit(division)}
+                        title="Edit Division"
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                      >
+                        <i className="bi bi-pencil"></i>
+                      </button>
+                      <button 
+                        className="btn-professional btn-danger"
+                        onClick={() => handleDelete(division)}
+                        title="Delete Division"
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                      >
+                        <i className="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {divisions.length === 0 && (
+          <div className="no-data">
+            <p>No divisions found. Click "Add Division" to create the first division.</p>
           </div>
-        ) : (
-          <>
-            {divisions.map(division => (
-              <div key={division._id} className="division-card">
-                <div className="division-header">
-                  <h4>{division.name}</h4>
-                  <div className="division-code">
-                    <i className="bi bi-tag-fill"></i>
-                    {division.code}
-                  </div>
-                </div>
-                
-                <div className="division-stats">
-                  <div className="stat-item">
-                    <div className="stat-icon">
-                      <i className="bi bi-people-fill"></i>
-                    </div>
-                    <div className="stat-content">
-                      <span className="stat-number">{division.employeeCount || 0}</span>
-                      <span className="stat-label">Employees</span>
-                    </div>
-                  </div>
-                  
-                  <div className="stat-item">
-                    <div className="stat-icon success">
-                      <i className="bi bi-check-circle-fill"></i>
-                    </div>
-                    <div className="stat-content">
-                      <span className="stat-number">{division.isActive ? 'Active' : 'Inactive'}</span>
-                      <span className="stat-label">Status</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="actions">
-                  <button 
-                    className="btn btn-sm btn-outline-primary"
-                    onClick={() => handleEdit(division)}
-                  >
-                    <i className="bi bi-pencil-square"></i> Edit
-                  </button>
-                  <button 
-                    className="btn btn-sm btn-outline-danger"
-                    onClick={() => handleDelete(division)}
-                  >
-                    <i className="bi bi-trash3"></i> Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-            
-            {/* Add New Division Card */}
-            <div 
-              className="division-card add-card"
-              onClick={handleAdd}
-            >
-              <div className="add-content">
-                <div className="add-icon">
-                  <i className="bi bi-plus-circle"></i>
-                </div>
-                <h4>Add New Division</h4>
-                <p>Create a new division to organize your workforce</p>
-              </div>
-            </div>
-          </>
         )}
       </div>
 
       {/* Add/Edit Division Modal */}
       {(showAddModal || showEditModal) && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>
-                <i className={currentDivision ? "bi bi-pencil-square" : "bi bi-plus-circle"}></i> 
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal-content professional-form" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ borderBottom: '2px solid var(--gray-200)', paddingBottom: '20px', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <i className={`bi ${currentDivision ? "bi-pencil-square" : "bi-plus-circle"}`} style={{ color: 'var(--primary)' }}></i>
                 {currentDivision ? 'Edit Division' : 'Add New Division'}
-              </h2>
+              </h3>
               <button 
-                className="modal-close"
+                className="modal-close btn-professional btn-danger"
                 onClick={handleCloseModal}
+                style={{ padding: '8px 12px', fontSize: '16px' }}
               >
                 <i className="bi bi-x"></i>
               </button>
             </div>
             
-            <div className="modal-body">
-              <form onSubmit={handleSubmit} className="division-form">
-                <div className="form-group">
-                  <label htmlFor="name">Division Name *</label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className={`form-control ${formErrors.name ? 'error' : ''}`}
-                    placeholder="Enter division name"
-                  />
-                  {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-                </div>
+            <form onSubmit={handleSubmit} className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Division Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  className={`form-input ${formErrors.name ? 'error' : ''}`}
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Enter division name"
+                  required
+                />
+                {formErrors.name && <span className="error-text">{formErrors.name}</span>}
+              </div>
 
-                <div className="form-group">
-                  <label htmlFor="code">Division Code *</label>
-                  <input
-                    type="text"
-                    id="code"
-                    name="code"
-                    value={formData.code}
-                    onChange={handleInputChange}
-                    className={`form-control ${formErrors.code ? 'error' : ''}`}
-                    placeholder="Enter division code (e.g., ENG, HR)"
-                  />
-                  {formErrors.code && <span className="error-text">{formErrors.code}</span>}
-                </div>
-              </form>
-            </div>
+              <div className="form-group">
+                <label className="form-label">Division Code *</label>
+                <input
+                  type="text"
+                  name="code"
+                  className={`form-input ${formErrors.code ? 'error' : ''}`}
+                  value={formData.code}
+                  onChange={handleInputChange}
+                  placeholder="Enter division code (e.g., ENG, HR)"
+                  required
+                />
+                {formErrors.code && <span className="error-text">{formErrors.code}</span>}
+              </div>
 
-            <div className="modal-footer">
-              <button 
-                type="button" 
-                className="btn-professional btn-secondary"
-                onClick={handleCloseModal}
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit" 
-                className="btn-professional btn-primary"
-                onClick={handleSubmit}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <>
-                    <i className="bi bi-hourglass-split"></i> {currentDivision ? 'Updating...' : 'Adding...'}
-                  </>
-                ) : (
-                  <>
-                    <i className={currentDivision ? "bi bi-check-circle" : "bi bi-plus-circle"}></i> 
-                    {currentDivision ? 'Update Division' : 'Add Division'}
-                  </>
-                )}
-              </button>
-            </div>
+              <div className="modal-footer" style={{ borderTop: '2px solid var(--gray-200)', paddingTop: '20px', marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button 
+                  type="button"
+                  className="btn-professional btn-secondary"
+                  onClick={handleCloseModal}
+                  disabled={submitting}
+                  style={{ background: 'var(--gray-500)' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="btn-professional btn-success"
+                  disabled={submitting}
+                >
+                  <i className={`bi ${currentDivision ? "bi-check-circle" : "bi-plus-circle"}`}></i>
+                  {submitting ? (
+                    currentDivision ? 'Updating...' : 'Adding...'
+                  ) : (
+                    currentDivision ? 'Update Division' : 'Add Division'
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

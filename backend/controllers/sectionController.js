@@ -19,10 +19,12 @@ const getSections = async (req, res) => {
     } = req.query;
 
     // Build filter object
-    const filter = {};
+    const filter = {
+      status: { $ne: 'deleted' } // Exclude deleted sections by default
+    };
     
     if (division) filter.division = division;
-    if (status) filter.status = status;
+    if (status && status !== 'deleted') filter.status = status; // Allow filtering by active/inactive, but not deleted
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -68,7 +70,10 @@ const getSections = async (req, res) => {
 // @access  Private
 const getSection = async (req, res) => {
   try {
-    const section = await Section.findById(req.params.id)
+    const section = await Section.findOne({ 
+      _id: req.params.id, 
+      status: { $ne: 'deleted' } 
+    })
       .populate('division', 'name code workingHours')
       .populate('employees', 'firstName lastName employeeId email phone')
       .populate('createdBy', 'firstName lastName')
@@ -128,9 +133,12 @@ const createSection = async (req, res) => {
       });
     }
 
+    // Generate code if not provided
+    const sectionCode = code || name.trim().toUpperCase().replace(/\s+/g, '_').slice(0, 10);
+
     // Check for duplicate section code within division
     const existingSection = await Section.findOne({ 
-      code, 
+      code: sectionCode, 
       division,
       status: { $ne: 'deleted' }
     });
@@ -144,14 +152,15 @@ const createSection = async (req, res) => {
 
     const section = await Section.create({
       name,
-      code,
+      code: sectionCode,
       description,
       division,
-      capacity,
+      capacity: capacity || 10,
       location,
       workingHours,
       budget,
-      status,
+      status: status || 'active',
+      isActive: (status || 'active') === 'active',
       createdBy: req.user.id
     });
 
@@ -233,20 +242,27 @@ const updateSection = async (req, res) => {
     }
 
     // Update section
+    const updateData = {
+      name,
+      code,
+      description,
+      division,
+      capacity,
+      location,
+      workingHours,
+      budget,
+      status,
+      updatedBy: req.user.id
+    };
+
+    // Synchronize isActive with status
+    if (status) {
+      updateData.isActive = status === 'active';
+    }
+
     const updatedSection = await Section.findByIdAndUpdate(
       req.params.id,
-      {
-        name,
-        code,
-        description,
-        division,
-        capacity,
-        location,
-        workingHours,
-        budget,
-        status,
-        updatedBy: req.user.id
-      },
+      updateData,
       { new: true, runValidators: true }
     ).populate('division', 'name code');
 
@@ -288,6 +304,7 @@ const deleteSection = async (req, res) => {
     // Soft delete
     await Section.findByIdAndUpdate(req.params.id, {
       status: 'deleted',
+      isActive: false,
       updatedBy: req.user.id
     });
 

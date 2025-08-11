@@ -72,6 +72,11 @@ const sectionSchema = new mongoose.Schema({
       match: [/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)']
     }
   },
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'deleted'],
+    default: 'active'
+  },
   isActive: {
     type: Boolean,
     default: true
@@ -79,6 +84,19 @@ const sectionSchema = new mongoose.Schema({
   establishedDate: {
     type: Date,
     default: Date.now
+  },
+  employees: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  updatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   contact: {
     phone: {
