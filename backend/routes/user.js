@@ -61,7 +61,7 @@ router.post(
   // auth,
   // authorize('super_admin', 'admin', 'administrative_clerk'),
   // checkPermission('users', 'create'),
-  userValidation.create,
+  // userValidation.create,
   // auditTrail('user_created', 'User'),
   createUser
 );
@@ -73,7 +73,7 @@ router.put(
   '/:id',
   // auth,
   // checkSelfOrAdmin,
-  userValidation.update,
+  // userValidation.update,
   // auditTrail('user_updated', 'User'),
   updateUser
 );
