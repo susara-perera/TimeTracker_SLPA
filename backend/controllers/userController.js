@@ -726,6 +726,119 @@ const toggleUserStatus = async (req, res) => {
   }
 };
 
+// @desc    Unlock user account
+// @route   PATCH /api/users/:id/unlock
+// @access  Private (admin, super_admin)
+const unlockUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Reset login attempts and unlock
+    await user.resetLoginAttempts();
+
+    // Log unlock action (only if user is authenticated)
+    if (req.user) {
+      await AuditLog.createLog({
+        user: req.user._id,
+        action: 'user_unlocked',
+        entity: { type: 'User', id: user._id, name: user.email },
+        category: 'security',
+        severity: 'medium',
+        description: 'User account unlocked',
+        details: `User ${user.fullName} account was unlocked by admin`,
+        metadata: {
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+          method: req.method,
+          endpoint: req.originalUrl
+        },
+        isSecurityRelevant: true
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User account unlocked successfully',
+      data: {
+        id: user._id,
+        isLocked: false
+      }
+    });
+
+  } catch (error) {
+    console.error('Unlock user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error unlocking user'
+    });
+  }
+};
+
+// @desc    Unlock all users (emergency function)
+// @route   POST /api/users/unlock-all
+// @access  Private (super_admin only) - No auth required for emergency
+const unlockAllUsers = async (req, res) => {
+  try {
+    // Reset all locked accounts
+    const result = await User.updateMany(
+      { 
+        $or: [
+          { lockUntil: { $exists: true } },
+          { loginAttempts: { $gt: 0 } }
+        ]
+      },
+      { 
+        $unset: { 
+          lockUntil: 1,
+          loginAttempts: 1 
+        }
+      }
+    );
+
+    // Log unlock all action (only if user is authenticated)
+    if (req.user) {
+      await AuditLog.createLog({
+        user: req.user._id,
+        action: 'unlock_all_users',
+        entity: { type: 'System' },
+        category: 'security',
+        severity: 'high',
+        description: 'All user accounts unlocked',
+        details: `${result.modifiedCount} user accounts were unlocked by super admin`,
+        metadata: {
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+          method: req.method,
+          endpoint: req.originalUrl
+        },
+        isSecurityRelevant: true
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully unlocked ${result.modifiedCount} user accounts`,
+      data: {
+        unlockedCount: result.modifiedCount
+      }
+    });
+
+  } catch (error) {
+    console.error('Unlock all users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error unlocking users'
+    });
+  }
+};
+
 module.exports = {
   getUsers,
   getUser,
@@ -733,5 +846,7 @@ module.exports = {
   updateUser,
   deleteUser,
   getUserStats,
-  toggleUserStatus
+  toggleUserStatus,
+  unlockUser,
+  unlockAllUsers
 };

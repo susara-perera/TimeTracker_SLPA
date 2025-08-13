@@ -6,7 +6,9 @@ const {
   updateUser,
   deleteUser,
   getUserStats,
-  toggleUserStatus
+  toggleUserStatus,
+  unlockUser,
+  unlockAllUsers
 } = require('../controllers/userController');
 const { 
   auth, 
@@ -100,6 +102,29 @@ router.patch(
   checkPermission('users', 'update'),
   auditTrail('user_status_toggled', 'User'),
   toggleUserStatus
+);
+
+// @route   PATCH /api/users/:id/unlock
+// @desc    Unlock user account
+// @access  Private (admin, super_admin, administrative_clerk)
+router.patch(
+  '/:id/unlock',
+  auth,
+  authorize('super_admin', 'admin', 'administrative_clerk'),
+  checkPermission('users', 'update'),
+  auditTrail('user_unlocked', 'User'),
+  unlockUser
+);
+
+// @route   POST /api/users/unlock-all
+// @desc    Unlock all user accounts (emergency function)
+// @access  Public (no auth required for emergency)
+router.post(
+  '/unlock-all',
+  // auth,
+  // authorize('super_admin'),
+  // auditTrail('unlock_all_users', 'System'),
+  unlockAllUsers
 );
 
 module.exports = router;

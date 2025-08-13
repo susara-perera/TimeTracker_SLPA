@@ -723,9 +723,9 @@ const authValidation = {
           throw new Error('Please provide a valid email address');
         }
         
-        // Validate employee ID format if provided
-        if (employeeId && !/^[A-Z]{2,3}\d{3,4}$/.test(employeeId)) {
-          throw new Error('Please provide a valid employee ID (e.g., SP001)');
+        // Validate employee ID format if provided - allow more flexible formats
+        if (employeeId && employeeId.trim().length === 0) {
+          throw new Error('Employee ID cannot be empty');
         }
         
         return true;

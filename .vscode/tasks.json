@@ -4,10 +4,21 @@
 		{
 			"label": "Start Development Servers",
 			"type": "shell",
-			"command": "concurrently \"cd backend && npm start\" \"cd frontend && npm start\"",
+			"command": "concurrently",
+			"args": [
+				"\"cd backend; npm start\"",
+				"\"cd frontend; npm start\""
+			],
 			"group": "build",
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "Start Backend Server",
+			"type": "shell",
+			"command": "cd backend; npm start",
+			"isBackground": true,
+			"group": "build"
 		}
 	]
 }
