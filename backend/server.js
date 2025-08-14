@@ -10,11 +10,21 @@ const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const connectDB = require('./config/database');
+const { testMySQLConnection } = require('./config/mysql');
 
 const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+// Test MySQL connection for reports
+testMySQLConnection().then(success => {
+  if (success) {
+    console.log('📊 MySQL available for report generation');
+  } else {
+    console.log('⚠️ MySQL not available - reports may be limited');
+  }
+});
 
 // Security middleware
 app.use(helmet({

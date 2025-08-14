@@ -8,7 +8,9 @@ const {
   getUserActivityReport,
   exportReport,
   getReportSummary,
-  getCustomReport
+  getCustomReport,
+  generateMySQLAttendanceReport,
+  generateMySQLMealReport
 } = require('../controllers/reportController');
 const { 
   auth, 
@@ -123,6 +125,28 @@ router.get(
   reportValidation.exportReport,
   auditTrail('report_exported', 'Report'),
   exportReport
+);
+
+// ========== MySQL Report Routes ==========
+
+// @route   POST /api/reports/mysql/attendance
+// @desc    Generate MySQL-based attendance report (individual/group)
+// @access  Private
+router.post(
+  '/mysql/attendance',
+  auth,
+  auditTrail('mysql_attendance_report_generated', 'Report'),
+  generateMySQLAttendanceReport
+);
+
+// @route   POST /api/reports/mysql/meal
+// @desc    Generate MySQL-based meal report
+// @access  Private
+router.post(
+  '/mysql/meal',
+  auth,
+  auditTrail('mysql_meal_report_generated', 'Report'),
+  generateMySQLMealReport
 );
 
 module.exports = router;

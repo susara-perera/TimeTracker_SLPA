@@ -4,6 +4,7 @@ const Division = require('../models/Division');
 const Section = require('../models/Section');
 const Meal = require('../models/Meal');
 const AuditLog = require('../models/AuditLog');
+const { createMySQLConnection } = require('../config/mysql');
 const moment = require('moment');
 
 // @desc    Generate attendance report
@@ -993,6 +994,187 @@ const getCustomReport = async (req, res) => {
   }
 };
 
+// @desc    Generate MySQL-based attendance report (individual/group)
+// @route   POST /api/reports/mysql/attendance
+// @access  Private
+const generateMySQLAttendanceReport = async (req, res) => {
+  try {
+    const {
+      report_type = 'individual',
+      employee_id = '',
+      from_date,
+      to_date
+    } = req.body;
+
+    // Validate required fields
+    if (!from_date || !to_date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date range is required'
+      });
+    }
+
+    // Validate employee ID for individual reports
+    if (report_type === 'individual' && !employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee ID is required for individual reports'
+      });
+    }
+
+    // Create MySQL connection
+    const connection = await createMySQLConnection();
+
+    // Build base query
+    let sql = `SELECT 
+                attendance_id,
+                employee_ID,
+                fingerprint_id,
+                date_,
+                time_,
+                scan_type
+               FROM attendance 
+               WHERE date_ BETWEEN ? AND ?`;
+    
+    let params = [from_date, to_date];
+
+    // Add employee filter for individual reports
+    if (report_type === 'individual') {
+      sql += ` AND employee_ID = ?`;
+      params.push(employee_id);
+    }
+
+    // Add ordering
+    sql += ` ORDER BY date_ DESC, time_ DESC`;
+
+    // Execute query
+    const [attendance_data] = await connection.execute(sql, params);
+
+    // Calculate summary statistics
+    const summary = {
+      total_records: attendance_data.length,
+      unique_employees: [...new Set(attendance_data.map(record => record.employee_ID))].length,
+      in_scans: attendance_data.filter(record => 
+        record.scan_type && record.scan_type.toUpperCase() === 'IN'
+      ).length,
+      out_scans: attendance_data.filter(record => 
+        record.scan_type && record.scan_type.toUpperCase() === 'OUT'
+      ).length,
+      date_range: {
+        from: from_date,
+        to: to_date
+      }
+    };
+
+    // Prepare query parameters for export
+    const query_params = {
+      report_type,
+      employee_id,
+      from_date,
+      to_date
+    };
+
+    // Close connection
+    await connection.end();
+
+    // Return response
+    res.status(200).json({
+      success: true,
+      data: attendance_data,
+      summary,
+      query_params,
+      message: 'Report generated successfully'
+    });
+
+  } catch (error) {
+    console.error('MySQL Attendance Report Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while generating the report: ' + error.message
+    });
+  }
+};
+
+// @desc    Generate MySQL-based meal report
+// @route   POST /api/reports/mysql/meal
+// @access  Private
+const generateMySQLMealReport = async (req, res) => {
+  try {
+    const {
+      report_type = 'all',
+      employee_id = '',
+      from_date,
+      to_date
+    } = req.body;
+
+    // Validate required fields
+    if (!from_date || !to_date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date range is required'
+      });
+    }
+
+    // Create MySQL connection
+    const connection = await createMySQLConnection();
+
+    // Build meal report query
+    let sql = `SELECT 
+                id,
+                employee_id,
+                meal_date,
+                meal_type,
+                booking_time,
+                status
+               FROM meal_bookings 
+               WHERE meal_date BETWEEN ? AND ?`;
+    
+    let params = [from_date, to_date];
+
+    // Add employee filter if specified
+    if (report_type === 'individual' && employee_id) {
+      sql += ` AND employee_id = ?`;
+      params.push(employee_id);
+    }
+
+    // Add ordering
+    sql += ` ORDER BY meal_date DESC, booking_time DESC`;
+
+    // Execute query
+    const [meal_data] = await connection.execute(sql, params);
+
+    // Calculate summary statistics
+    const summary = {
+      total_bookings: meal_data.length,
+      unique_employees: [...new Set(meal_data.map(record => record.employee_id))].length,
+      breakfast_bookings: meal_data.filter(record => record.meal_type === 'breakfast').length,
+      lunch_bookings: meal_data.filter(record => record.meal_type === 'lunch').length,
+      dinner_bookings: meal_data.filter(record => record.meal_type === 'dinner').length,
+      date_range: {
+        from: from_date,
+        to: to_date
+      }
+    };
+
+    // Close connection
+    await connection.end();
+
+    res.status(200).json({
+      success: true,
+      data: meal_data,
+      summary,
+      message: 'Meal report generated successfully'
+    });
+
+  } catch (error) {
+    console.error('MySQL Meal Report Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while generating the meal report: ' + error.message
+    });
+  }
+};
+
 module.exports = {
   getAttendanceReport,
   getAuditReport,
@@ -1002,5 +1184,7 @@ module.exports = {
   getUserActivityReport,
   exportReport,
   getReportSummary,
-  getCustomReport
+  getCustomReport,
+  generateMySQLAttendanceReport,
+  generateMySQLMealReport
 };
