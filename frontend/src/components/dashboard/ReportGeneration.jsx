@@ -156,10 +156,12 @@ const ReportGeneration = () => {
       <div className="report-header">
         <div className="header-content">
           <h1>
-            <i className="bi bi-graph-up"></i>
-            Report Generation
+            <i className="bi bi-graph-up-arrow"></i>
+            Report Generation Center
           </h1>
-          <p className="header-subtitle">Generate detailed attendance, meal, and audit reports</p>
+          <p className="header-subtitle">
+            Generate comprehensive attendance, meal, and audit reports with advanced filtering and export capabilities
+          </p>
         </div>
       </div>
 
