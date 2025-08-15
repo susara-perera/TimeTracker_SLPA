@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './ReportGeneration.css';
 
 const ReportGeneration = () => {
   const [reportType, setReportType] = useState('attendance');
   const [reportScope, setReportScope] = useState('individual');
   const [employeeId, setEmployeeId] = useState('');
+  const [divisionId, setDivisionId] = useState('all');
+  const [sectionId, setSectionId] = useState('all');
+  const [divisions, setDivisions] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [allSections, setAllSections] = useState([]);
   const [dateRange, setDateRange] = useState({
     startDate: '',
     endDate: ''
@@ -12,6 +17,78 @@ const ReportGeneration = () => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState('');
+
+  // Fetch divisions and sections on component mount
+  useEffect(() => {
+    fetchDivisions();
+    fetchAllSections();
+  }, []);
+
+  // Fetch sections when division changes
+  useEffect(() => {
+    if (divisionId && divisionId !== 'all') {
+      fetchSectionsByDivision(divisionId);
+    } else {
+      setSections(allSections);
+      setSectionId('all');
+    }
+  }, [divisionId, allSections]);
+
+  const fetchDivisions = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/mysql/divisions', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDivisions(data.divisions || []);
+      }
+    } catch (err) {
+      console.error('Error fetching divisions:', err);
+    }
+  };
+
+  const fetchAllSections = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/mysql/sections', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAllSections(data.sections || []);
+        setSections(data.sections || []);
+      }
+    } catch (err) {
+      console.error('Error fetching sections:', err);
+    }
+  };
+
+  const fetchSectionsByDivision = async (divisionId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/mysql/sections?division_id=${divisionId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSections(data.sections || []);
+        setSectionId('all'); // Reset section selection
+      }
+    } catch (err) {
+      console.error('Error fetching sections by division:', err);
+    }
+  };
 
   const generateReport = async () => {
     if (!dateRange.startDate || !dateRange.endDate) {
@@ -39,6 +116,16 @@ const ReportGeneration = () => {
       // Add employee ID for individual reports
       if (reportScope === 'individual' && employeeId) {
         requestData.employee_id = employeeId;
+      }
+
+      // Add division and section filters for group attendance reports
+      if (reportScope === 'group' && reportType === 'attendance') {
+        if (divisionId && divisionId !== 'all') {
+          requestData.division_id = divisionId;
+        }
+        if (sectionId && sectionId !== 'all') {
+          requestData.section_id = sectionId;
+        }
       }
 
       // Determine endpoint based on report type
@@ -91,24 +178,44 @@ const ReportGeneration = () => {
 
     try {
       let content = '';
-      let filename = `${reportType}_report_${dateRange.startDate}_to_${dateRange.endDate}`;
+      let filename = `${reportType}_report_${reportScope}`;
+      
+      // Add division/section info to filename if applicable
+      if (reportScope === 'group' && reportType === 'attendance') {
+        if (divisionId !== 'all') {
+          const selectedDivision = divisions.find(d => d.division_id === divisionId);
+          if (selectedDivision) {
+            filename += `_${selectedDivision.division_name.replace(/\s+/g, '_')}`;
+          }
+        }
+        if (sectionId !== 'all') {
+          const selectedSection = sections.find(s => s.section_id === sectionId);
+          if (selectedSection) {
+            filename += `_${selectedSection.section_name.replace(/\s+/g, '_')}`;
+          }
+        }
+      }
+      
+      filename += `_${dateRange.startDate}_to_${dateRange.endDate}`;
 
       if (format === 'csv') {
         // Generate CSV content
         if (reportType === 'attendance') {
-          const headers = ['Attendance ID', 'Employee ID', 'Fingerprint ID', 'Date', 'Time', 'Scan Type'];
+          const headers = ['Attendance ID', 'Employee ID', 'Employee Name', 'Division', 'Section', 'Date', 'Time', 'Scan Type'];
           content = headers.join(',') + '\n';
           
           reportData.data.forEach(record => {
             const row = [
               record.attendance_id || '',
               record.employee_ID || '',
-              record.fingerprint_id || '',
+              record.employee_name || '',
+              record.division_name || '',
+              record.section_name || '',
               record.date_ || '',
               record.time_ || '',
               record.scan_type || ''
             ];
-            content += row.join(',') + '\n';
+            content += row.map(field => `"${field}"`).join(',') + '\n';
           });
         } else if (reportType === 'meal') {
           const headers = ['ID', 'Employee ID', 'Meal Date', 'Meal Type', 'Booking Time', 'Status'];
@@ -123,7 +230,7 @@ const ReportGeneration = () => {
               record.booking_time || '',
               record.status || ''
             ];
-            content += row.join(',') + '\n';
+            content += row.map(field => `"${field}"`).join(',') + '\n';
           });
         }
 
@@ -199,6 +306,42 @@ const ReportGeneration = () => {
                   <option value="group">👥 Group Report</option>
                 </select>
               </div>
+            )}
+
+            {reportScope === 'group' && reportType === 'attendance' && (
+              <>
+                <div className="form-field">
+                  <label className="field-label">Division Filter</label>
+                  <select 
+                    className="field-input"
+                    value={divisionId}
+                    onChange={(e) => setDivisionId(e.target.value)}
+                  >
+                    <option value="all">🏢 All Divisions</option>
+                    {divisions.map((division) => (
+                      <option key={division.division_id} value={division.division_id}>
+                        📋 {division.division_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label className="field-label">Section Filter</label>
+                  <select 
+                    className="field-input"
+                    value={sectionId}
+                    onChange={(e) => setSectionId(e.target.value)}
+                  >
+                    <option value="all">🏢 All Sections</option>
+                    {sections.map((section) => (
+                      <option key={section.section_id} value={section.section_id}>
+                        📋 {section.section_name} {section.division_name ? `(${section.division_name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
             )}
 
             {reportScope === 'individual' && (reportType === 'attendance' || reportType === 'meal') && (
@@ -294,6 +437,16 @@ const ReportGeneration = () => {
               <h3 className="results-title">
                 <i className="bi bi-clipboard-data"></i>
                 Report Results
+                {reportScope === 'group' && reportType === 'attendance' && (
+                  <span className="filter-info">
+                    {reportData.summary?.division_filter && (
+                      <span className="division-info"> - {reportData.summary.division_filter}</span>
+                    )}
+                    {reportData.summary?.section_filter && (
+                      <span className="section-info"> - {reportData.summary.section_filter}</span>
+                    )}
+                  </span>
+                )}
               </h3>
             </div>
 
@@ -362,7 +515,9 @@ const ReportGeneration = () => {
                           <>
                             <th>Attendance ID</th>
                             <th>Employee ID</th>
-                            <th>Fingerprint ID</th>
+                            <th>Employee Name</th>
+                            <th>Division</th>
+                            <th>Section</th>
                             <th>Date</th>
                             <th>Time</th>
                             <th>Status</th>
@@ -387,7 +542,9 @@ const ReportGeneration = () => {
                             <>
                               <td>{record.attendance_id}</td>
                               <td>{record.employee_ID}</td>
-                              <td>{record.fingerprint_id}</td>
+                              <td>{record.employee_name || 'Unknown'}</td>
+                              <td>{record.division_name || 'Unknown'}</td>
+                              <td>{record.section_name || 'Unknown'}</td>
                               <td>{record.date_}</td>
                               <td>{record.time_}</td>
                               <td>

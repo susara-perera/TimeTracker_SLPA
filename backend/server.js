@@ -126,6 +126,7 @@ app.use('/api/sections', require('./routes/section'));
 app.use('/api/meals', require('./routes/meal'));
 app.use('/api/reports', require('./routes/report'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/mysql', require('./routes/mysql'));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

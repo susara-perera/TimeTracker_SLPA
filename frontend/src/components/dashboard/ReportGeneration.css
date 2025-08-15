@@ -502,6 +502,31 @@
   }
 }
 
+/* Section Info Styling */
+.section-info {
+  color: #ffd700;
+  font-size: 0.9em;
+  font-weight: 500;
+  margin-left: 0.5rem;
+  opacity: 0.9;
+}
+
+.filter-info {
+  color: #ffd700;
+  font-size: 0.9em;
+  font-weight: 500;
+  margin-left: 0.5rem;
+  opacity: 0.9;
+}
+
+.division-info {
+  color: #ff6b6b;
+}
+
+.section-info {
+  color: #4ecdc4;
+}
+
 @media (max-width: 480px) {
   .header-content h1 {
     font-size: 1.1rem;
@@ -521,5 +546,11 @@
   
   .export-actions {
     flex-direction: column;
+  }
+  
+  .section-info, .filter-info, .division-info {
+    display: block;
+    margin-left: 0;
+    margin-top: 0.25rem;
   }
 }

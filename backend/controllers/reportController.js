@@ -1002,6 +1002,8 @@ const generateMySQLAttendanceReport = async (req, res) => {
     const {
       report_type = 'individual',
       employee_id = '',
+      division_id = '',
+      section_id = '',
       from_date,
       to_date
     } = req.body;
@@ -1025,27 +1027,70 @@ const generateMySQLAttendanceReport = async (req, res) => {
     // Create MySQL connection
     const connection = await createMySQLConnection();
 
-    // Build base query
-    let sql = `SELECT 
-                attendance_id,
-                employee_ID,
-                fingerprint_id,
-                date_,
-                time_,
-                scan_type
-               FROM attendance 
-               WHERE date_ BETWEEN ? AND ?`;
-    
-    let params = [from_date, to_date];
+    let sql, params;
 
-    // Add employee filter for individual reports
-    if (report_type === 'individual') {
-      sql += ` AND employee_ID = ?`;
-      params.push(employee_id);
+    if (report_type === 'group' && (division_id || section_id)) {
+      // Group report with division or section filter
+      let employeeFilter = '';
+      let employeeParams = [];
+
+      if (section_id && section_id !== 'all') {
+        // Filter by specific section
+        employeeFilter = 'AND e.section = ?';
+        employeeParams.push(section_id);
+      } else if (division_id && division_id !== 'all') {
+        // Filter by specific division
+        employeeFilter = 'AND e.division = ?';
+        employeeParams.push(division_id);
+      }
+
+      sql = `SELECT 
+              a.attendance_id,
+              a.employee_ID,
+              a.fingerprint_id,
+              a.date_,
+              a.time_,
+              a.scan_type,
+              e.employee_name,
+              d.division_name,
+              s.section_name
+             FROM attendance a
+             LEFT JOIN employees e ON a.employee_ID = e.employee_ID
+             LEFT JOIN divisions d ON e.division = d.division_id
+             LEFT JOIN sections s ON e.section = s.section_id
+             WHERE a.date_ BETWEEN ? AND ? ${employeeFilter}
+             ORDER BY a.date_ DESC, a.time_ DESC`;
+      
+      params = [from_date, to_date, ...employeeParams];
+    } else {
+      // Original logic for individual reports or all group reports
+      sql = `SELECT 
+              a.attendance_id,
+              a.employee_ID,
+              a.fingerprint_id,
+              a.date_,
+              a.time_,
+              a.scan_type,
+              e.employee_name,
+              d.division_name,
+              s.section_name
+             FROM attendance a
+             LEFT JOIN employees e ON a.employee_ID = e.employee_ID
+             LEFT JOIN divisions d ON e.division = d.division_id
+             LEFT JOIN sections s ON e.section = s.section_id
+             WHERE a.date_ BETWEEN ? AND ?`;
+      
+      params = [from_date, to_date];
+
+      // Add employee filter for individual reports
+      if (report_type === 'individual') {
+        sql += ` AND a.employee_ID = ?`;
+        params.push(employee_id);
+      }
+
+      // Add ordering
+      sql += ` ORDER BY a.date_ DESC, a.time_ DESC`;
     }
-
-    // Add ordering
-    sql += ` ORDER BY date_ DESC, time_ DESC`;
 
     // Execute query
     const [attendance_data] = await connection.execute(sql, params);
@@ -1066,10 +1111,33 @@ const generateMySQLAttendanceReport = async (req, res) => {
       }
     };
 
+    // Add division/section info to summary if filtered
+    if (division_id && division_id !== 'all') {
+      const [divisionInfo] = await connection.execute(
+        'SELECT division_name FROM divisions WHERE division_id = ?', 
+        [division_id]
+      );
+      if (divisionInfo.length > 0) {
+        summary.division_filter = divisionInfo[0].division_name;
+      }
+    }
+
+    if (section_id && section_id !== 'all') {
+      const [sectionInfo] = await connection.execute(
+        'SELECT section_name FROM sections WHERE section_id = ?', 
+        [section_id]
+      );
+      if (sectionInfo.length > 0) {
+        summary.section_filter = sectionInfo[0].section_name;
+      }
+    }
+
     // Prepare query parameters for export
     const query_params = {
       report_type,
       employee_id,
+      division_id,
+      section_id,
       from_date,
       to_date
     };
