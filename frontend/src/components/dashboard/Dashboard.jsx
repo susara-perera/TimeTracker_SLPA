@@ -76,6 +76,19 @@ const Dashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Listen for external navigation events (e.g., from other components)
+  React.useEffect(() => {
+    const handler = (e) => {
+      const target = e?.detail;
+      if (typeof target === 'string') {
+        setActiveSection(target);
+      }
+    };
+
+    window.addEventListener('navigateTo', handler);
+    return () => window.removeEventListener('navigateTo', handler);
+  }, []);
+
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'dashboard':

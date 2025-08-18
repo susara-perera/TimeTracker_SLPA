@@ -18,6 +18,8 @@ const UserManagement = () => {
   });
   const [divisions, setDivisions] = useState([]);
   const [sections, setSections] = useState([]);
+  const [showAddRoleModal, setShowAddRoleModal] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
 
   // Helper function to get division name by ID
   const getDivisionName = (divisionId) => {
@@ -300,6 +302,45 @@ const UserManagement = () => {
     }));
   };
 
+  const handleAddRoleSubmit = (e) => {
+    e.preventDefault();
+    const roleLabel = newRoleName.trim();
+    const roleValue = roleLabel.toLowerCase().replace(/\s+/g, '_');
+    if (!roleValue) return alert('Please enter a role name');
+
+    // Persist role to backend
+    (async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:5000/api/roles', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ value: roleValue, label: roleLabel })
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          const role = result.data;
+          // Notify frontend listeners of the created role
+          window.dispatchEvent(new CustomEvent('roleAdded', { detail: { value: role.value, label: role.label } }));
+          setNewRoleName('');
+          setShowAddRoleModal(false);
+          // Navigate to roles view so user can set permissions if desired
+          window.dispatchEvent(new CustomEvent('navigateTo', { detail: 'roles' }));
+        } else {
+          const error = await res.json().catch(() => ({}));
+          alert(error.message || 'Failed to create role. Check server logs or authentication.');
+        }
+      } catch (err) {
+        console.error('Error creating role:', err);
+        alert('Error creating role. Check console for details.');
+      }
+    })();
+  };
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -315,12 +356,23 @@ const UserManagement = () => {
       {/* Professional Section Header */}
       <div className="section-header">
         <h2><i className="bi bi-people"></i> User Management</h2>
-        <button 
-          className="btn-professional btn-primary"
-          onClick={handleAddUser}
-        >
-          <i className="bi bi-plus-circle"></i> Add User
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className="btn-professional btn-secondary"
+            onClick={() => setShowAddRoleModal(true)}
+            title="Add Role"
+            style={{ padding: '8px 12px', fontSize: '14px' }}
+          >
+            <i className="bi bi-shield-check"></i> Add Role
+          </button>
+
+          <button 
+            className="btn-professional btn-primary"
+            onClick={handleAddUser}
+          >
+            <i className="bi bi-plus-circle"></i> Add User
+          </button>
+        </div>
       </div>
 
       {/* Professional Users Table */}
@@ -558,6 +610,58 @@ const UserManagement = () => {
                 >
                   <i className="bi bi-check-circle"></i>
                   {editingUser ? 'Update User' : 'Add User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAddRoleModal && (
+        <div className="modal-overlay" onClick={() => setShowAddRoleModal(false)}>
+          <div className="modal-content professional-form" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header" style={{ borderBottom: '2px solid var(--gray-200)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="bi bi-shield-check" style={{ color: 'var(--primary)' }}></i>
+                Add New Role
+              </h3>
+              <button 
+                className="modal-close btn-professional btn-danger"
+                onClick={() => setShowAddRoleModal(false)}
+                style={{ padding: '6px 10px', fontSize: '14px' }}
+              >
+                <i className="bi bi-x"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddRoleSubmit} className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Role Name *</label>
+                <input
+                  type="text"
+                  name="roleName"
+                  className="form-input"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  placeholder="e.g., Regional Manager"
+                  required
+                />
+                <small className="text-muted">Only a name is required. We'll create an internal value automatically.</small>
+              </div>
+
+              <div className="modal-footer" style={{ borderTop: '2px solid var(--gray-200)', paddingTop: '12px', marginTop: '12px', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button 
+                  type="button"
+                  className="btn-professional btn-secondary"
+                  onClick={() => setShowAddRoleModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="btn-professional btn-success"
+                >
+                  Add Role
                 </button>
               </div>
             </form>

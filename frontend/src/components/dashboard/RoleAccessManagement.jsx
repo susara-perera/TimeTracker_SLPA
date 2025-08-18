@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 import './RoleAccessManagement.css';
 
 const RoleAccessManagement = () => {
@@ -12,15 +13,17 @@ const RoleAccessManagement = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
+  const { user } = useContext(AuthContext);
+  const isSuperAdmin = user?.role === 'super_admin';
 
-  // Available roles
-  const availableRoles = [
+  // Available roles (moved to state so runtime additions are possible)
+  const [availableRoles, setAvailableRoles] = useState([
     { value: 'super_admin', label: 'Super Admin', description: 'Highest level system administrator' },
     { value: 'admin', label: 'Administrator', description: 'System administrator with management rights' },
     { value: 'administrative_clerk', label: 'Administrative Clerk', description: 'Administrative support staff' },
     { value: 'clerk', label: 'Clerk', description: 'General office clerk' },
     { value: 'employee', label: 'Employee', description: 'Regular system user' }
-  ];
+  ]);
 
   // Available permissions list based on User model
   const availablePermissions = [
@@ -78,6 +81,45 @@ const RoleAccessManagement = () => {
 
   useEffect(() => {
     fetchUsers();
+
+    // Load roles from backend
+    (async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:5000/api/roles', {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          if (Array.isArray(result.data) && result.data.length) {
+            setAvailableRoles(result.data.map(r => ({ value: r.value, label: r.label, description: r.description || '' })));
+          }
+        } else {
+          console.warn('Failed to fetch roles from backend, using defaults');
+        }
+      } catch (err) {
+        console.warn('Error fetching roles:', err);
+      }
+    })();
+
+    // Listen for roles added via other components
+    const handler = (e) => {
+      const payload = e?.detail;
+      if (payload && payload.value && payload.label) {
+        // Avoid duplicates
+        setAvailableRoles(prev => {
+          if (prev.find(r => r.value === payload.value)) return prev;
+          return [...prev, { value: payload.value, label: payload.label, description: '' }];
+        });
+      }
+    };
+
+    window.addEventListener('roleAdded', handler);
+    return () => window.removeEventListener('roleAdded', handler);
   }, []);
 
   // Fetch users from API
@@ -131,6 +173,7 @@ const RoleAccessManagement = () => {
 
   // Handle permission checkbox changes
   const handlePermissionChange = (category, permissionId) => {
+  if (!isSuperAdmin) return; // prevent non-super-admin from making changes
     const newPermissions = { ...formData.permissions };
     
     if (!newPermissions[category]) {
@@ -214,6 +257,11 @@ const RoleAccessManagement = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isSuperAdmin) {
+      setMessage('Only Super Admin can modify role permissions');
+      setMessageType('error');
+      return;
+    }
     
     if (!selectedRole) {
       setMessage('Please select a role first');
@@ -367,6 +415,8 @@ const RoleAccessManagement = () => {
                 className="form-control form-control-modern" 
                 value={selectedRole}
                 onChange={handleRoleSelect}
+                disabled={!isSuperAdmin}
+                title={!isSuperAdmin ? 'Only Super Admin can change selected role' : ''}
               >
                 <option value="">-- Choose a role to configure --</option>
                 {availableRoles.map(role => (
@@ -380,6 +430,13 @@ const RoleAccessManagement = () => {
                   <i className="bi bi-info-circle mr-1"></i>
                   This will update permissions for {selectedRoleUserCount} user(s) with the role: {selectedRoleData?.label}
                 </small>
+              )}
+
+              {!isSuperAdmin && (
+                <div className="alert alert-warning mt-3">
+                  <i className="bi bi-lock-fill mr-2"></i>
+                  You do not have permission to modify role permissions. Contact a Super Admin for changes.
+                </div>
               )}
             </div>
 
@@ -434,6 +491,7 @@ const RoleAccessManagement = () => {
                                 checked={isChecked || false}
                                 onChange={() => handlePermissionChange(category.category, permission.id)}
                                 id={`perm_${category.category}_${permission.id}`}
+                                disabled={!isSuperAdmin}
                               />
                               <span className="checkmark"></span>
                               <label htmlFor={`perm_${category.category}_${permission.id}`}>
@@ -457,7 +515,8 @@ const RoleAccessManagement = () => {
                     <button 
                       type="submit" 
                       className="btn-save-modern"
-                      disabled={submitting}
+                      disabled={submitting || !isSuperAdmin}
+                      title={!isSuperAdmin ? 'Only Super Admin can apply changes' : ''}
                     >
                       {submitting ? (
                         <>

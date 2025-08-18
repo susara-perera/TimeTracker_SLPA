@@ -182,9 +182,10 @@ const createUser = async (req, res) => {
       });
     }
 
-    // Validate role
-    const validRoles = ['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'];
-    if (!validRoles.includes(role)) {
+    // Validate role against stored roles
+    const Role = require('../models/Role');
+    const roleExists = await Role.findOne({ value: role });
+    if (!roleExists) {
       return res.status(400).json({
         success: false,
         message: 'Invalid role specified'
