@@ -7,6 +7,7 @@ import DivisionManagement from './DivisionManagement';
 import SectionManagement from './SectionManagement';
 import RoleAccessManagement from './RoleAccessManagement';
 import Settings from './Settings';
+import Footer from './Footer';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -245,6 +246,9 @@ const Dashboard = () => {
           {renderActiveSection()}
         </div>
       </main>
+
+      {/* Footer */}
+      <Footer />
     </div>
   );
 };

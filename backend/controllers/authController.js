@@ -108,7 +108,7 @@ const login = async (req, res) => {
         category: 'authentication',
         severity: 'medium',
         description: 'Failed login attempt - invalid password',
-        details: `Invalid password attempt. Attempts: ${user.loginAttempts + 1}`,
+        details: `Invalid password attempt`,
         metadata: {
           ipAddress: req.ip,
           userAgent: req.get('User-Agent'),
@@ -122,11 +122,6 @@ const login = async (req, res) => {
         success: false,
         message: 'Invalid credentials'
       });
-    }
-
-    // Reset login attempts on successful login
-    if (user.loginAttempts > 0) {
-      await user.resetLoginAttempts();
     }
 
     // Update last login
