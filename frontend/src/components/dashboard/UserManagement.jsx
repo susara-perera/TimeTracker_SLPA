@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -20,6 +21,8 @@ const UserManagement = () => {
   const [sections, setSections] = useState([]);
   const [showAddRoleModal, setShowAddRoleModal] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
+  const { user } = useContext(AuthContext);
+  const isSuperAdmin = user?.role === 'super_admin';
 
   // Helper function to get division name by ID
   const getDivisionName = (divisionId) => {
@@ -359,9 +362,11 @@ const UserManagement = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             className="btn-professional btn-secondary"
-            onClick={() => setShowAddRoleModal(true)}
-            title="Add Role"
-            style={{ padding: '8px 12px', fontSize: '14px' }}
+            onClick={() => { if (isSuperAdmin) setShowAddRoleModal(true); }}
+            title={!isSuperAdmin ? 'Only Super Admin can add roles' : 'Add Role'}
+            aria-disabled={!isSuperAdmin}
+            disabled={!isSuperAdmin}
+            style={{ padding: '8px 12px', fontSize: '14px', cursor: isSuperAdmin ? 'pointer' : 'not-allowed' }}
           >
             <i className="bi bi-shield-check"></i> Add Role
           </button>

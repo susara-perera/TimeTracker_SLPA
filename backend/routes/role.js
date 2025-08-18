@@ -8,7 +8,7 @@ const { auth, authorize } = require('../middleware/auth');
 // GET /api/roles
 router.get('/', auth, getRoles);
 
-// POST /api/roles - allow super_admin and admin to create roles
-router.post('/', auth, authorize('super_admin', 'admin'), createRole);
+// POST /api/roles - only super_admin can create roles
+router.post('/', auth, authorize('super_admin'), createRole);
 
 module.exports = router;
