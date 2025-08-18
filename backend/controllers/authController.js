@@ -65,31 +65,7 @@ const login = async (req, res) => {
       });
     }
 
-    // Check if account is locked
-    if (user.isLocked) {
-      // Log locked account access attempt
-      await AuditLog.createLog({
-        user: user._id,
-        action: 'failed_login',
-        entity: { type: 'User', id: user._id, name: user.email },
-        category: 'authentication',
-        severity: 'high',
-        description: 'Login attempt on locked account',
-        details: 'User attempted to login while account is locked',
-        metadata: {
-          ipAddress: req.ip,
-          userAgent: req.get('User-Agent'),
-          method: req.method,
-          endpoint: req.originalUrl
-        },
-        isSecurityRelevant: true
-      });
-
-      return res.status(423).json({
-        success: false,
-        message: 'Account is locked due to multiple failed login attempts. Please contact administrator.'
-      });
-    }
+    // Account lock check removed for development - accounts can login regardless of lock status
 
     // Check if account is active
     if (!user.isActive) {
@@ -121,8 +97,8 @@ const login = async (req, res) => {
     const isPasswordValid = await user.comparePassword(password);
     
     if (!isPasswordValid) {
-      // Increment login attempts
-      await user.incLoginAttempts();
+      // Login attempt increment removed for development
+      // await user.incLoginAttempts();
 
       // Log failed login attempt
       await AuditLog.createLog({
