@@ -170,90 +170,267 @@ const ReportGeneration = () => {
     }
   };
 
-  const exportReport = (format = 'csv') => {
+  const printReport = () => {
     if (!reportData || !reportData.data) {
-      setError('No data to export');
+      setError('No data to print');
       return;
     }
 
     try {
-      let content = '';
-      let filename = `${reportType}_report_${reportScope}`;
-      
-      // Add division/section info to filename if applicable
+      // Create print content
+      let printContent = `
+        <html>
+          <head>
+            <title>Attendance Report</title>
+            <style>
+              body { 
+                font-family: Arial, sans-serif; 
+                margin: 20px; 
+                color: #333;
+              }
+              .print-header { 
+                text-align: center; 
+                margin-bottom: 30px;
+                border-bottom: 2px solid #3b82f6;
+                padding-bottom: 20px;
+              }
+              .print-header h1 { 
+                color: #1e293b; 
+                margin: 0;
+                font-size: 24px;
+              }
+              .print-header h2 { 
+                color: #64748b; 
+                margin: 5px 0;
+                font-size: 18px;
+                font-weight: normal;
+              }
+              .report-info {
+                background: #f8fafc;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+              }
+              .report-info table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+              .report-info td {
+                padding: 5px 10px;
+                border: none;
+              }
+              .report-info .label {
+                font-weight: bold;
+                color: #475569;
+              }
+              table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-top: 20px;
+              }
+              th, td { 
+                border: 1px solid #d1d5db; 
+                padding: 8px; 
+                text-align: left;
+                font-size: 12px;
+              }
+              th { 
+                background-color: #3b82f6; 
+                color: white;
+                font-weight: bold;
+              }
+              tr:nth-child(even) { 
+                background-color: #f9fafb; 
+              }
+              .stats-summary {
+                display: flex;
+                justify-content: space-around;
+                margin: 20px 0;
+                background: #f0f9ff;
+                padding: 15px;
+                border-radius: 8px;
+              }
+              .stat-item {
+                text-align: center;
+              }
+              .stat-number {
+                display: block;
+                font-size: 24px;
+                font-weight: bold;
+                color: #3b82f6;
+              }
+              .stat-label {
+                font-size: 12px;
+                color: #64748b;
+              }
+              .status-badge {
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: bold;
+              }
+              .badge-in {
+                background-color: #dcfce7;
+                color: #166534;
+              }
+              .badge-out {
+                background-color: #fef2f2;
+                color: #dc2626;
+              }
+              @media print {
+                body { margin: 0; }
+                .no-print { display: none; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="print-header">
+              <h1>Sri Lanka Ports Authority</h1>
+              <h2>Attendance Report</h2>
+            </div>
+            
+            <div class="report-info">
+              <table>
+                <tr>
+                  <td class="label">Report Type:</td>
+                  <td>${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report</td>
+                  <td class="label">Report Scope:</td>
+                  <td>${reportScope.charAt(0).toUpperCase() + reportScope.slice(1)}</td>
+                </tr>
+                <tr>
+                  <td class="label">Date Range:</td>
+                  <td>${dateRange.startDate} to ${dateRange.endDate}</td>
+                  <td class="label">Generated:</td>
+                  <td>${new Date().toLocaleString()}</td>
+                </tr>`;
+
+      // Add division/section info if applicable
       if (reportScope === 'group' && reportType === 'attendance') {
         if (divisionId !== 'all') {
           const selectedDivision = divisions.find(d => d.division_id === divisionId);
           if (selectedDivision) {
-            filename += `_${selectedDivision.division_name.replace(/\s+/g, '_')}`;
+            printContent += `
+                <tr>
+                  <td class="label">Division:</td>
+                  <td colspan="3">${selectedDivision.division_name}</td>
+                </tr>`;
           }
         }
         if (sectionId !== 'all') {
           const selectedSection = sections.find(s => s.section_id === sectionId);
           if (selectedSection) {
-            filename += `_${selectedSection.section_name.replace(/\s+/g, '_')}`;
+            printContent += `
+                <tr>
+                  <td class="label">Section:</td>
+                  <td colspan="3">${selectedSection.section_name}</td>
+                </tr>`;
           }
         }
       }
-      
-      filename += `_${dateRange.startDate}_to_${dateRange.endDate}`;
 
-      if (format === 'csv') {
-        // Generate CSV content
-        if (reportType === 'attendance') {
-          const headers = ['Attendance ID', 'Employee ID', 'Employee Name', 'Division', 'Section', 'Date', 'Time', 'Scan Type'];
-          content = headers.join(',') + '\n';
-          
-          reportData.data.forEach(record => {
-            const row = [
-              record.attendance_id || '',
-              record.employee_ID || '',
-              record.employee_name || '',
-              record.division_name || '',
-              record.section_name || '',
-              record.date_ || '',
-              record.time_ || '',
-              record.scan_type || ''
-            ];
-            content += row.map(field => `"${field}"`).join(',') + '\n';
-          });
-        } else if (reportType === 'meal') {
-          const headers = ['ID', 'Employee ID', 'Meal Date', 'Meal Type', 'Booking Time', 'Status'];
-          content = headers.join(',') + '\n';
-          
-          reportData.data.forEach(record => {
-            const row = [
-              record.id || '',
-              record.employee_id || '',
-              record.meal_date || '',
-              record.meal_type || '',
-              record.booking_time || '',
-              record.status || ''
-            ];
-            content += row.map(field => `"${field}"`).join(',') + '\n';
-          });
-        }
+      printContent += `
+              </table>
+            </div>`;
 
-        filename += '.csv';
-      } else if (format === 'json') {
-        content = JSON.stringify(reportData, null, 2);
-        filename += '.json';
+      // Add statistics summary for attendance reports
+      if (reportType === 'attendance' && reportData.summary) {
+        printContent += `
+            <div class="stats-summary">
+              <div class="stat-item">
+                <span class="stat-number">${reportData.summary.total_records}</span>
+                <span class="stat-label">Total Records</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">${reportData.summary.unique_employees}</span>
+                <span class="stat-label">Unique Employees</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">${reportData.summary.in_scans}</span>
+                <span class="stat-label">IN Scans</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">${reportData.summary.out_scans}</span>
+                <span class="stat-label">OUT Scans</span>
+              </div>
+            </div>`;
       }
 
-      // Create and download file
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      // Add data table
+      printContent += `
+            <table>
+              <thead>
+                <tr>`;
+
+      if (reportType === 'attendance') {
+        printContent += `
+                  <th>Attendance ID</th>
+                  <th>Employee ID</th>
+                  <th>Employee Name</th>
+                  <th>Division</th>
+                  <th>Section</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Status</th>`;
+      } else if (reportType === 'meal') {
+        printContent += `
+                  <th>ID</th>
+                  <th>Employee ID</th>
+                  <th>Meal Date</th>
+                  <th>Meal Type</th>
+                  <th>Booking Time</th>
+                  <th>Status</th>`;
+      }
+
+      printContent += `
+                </tr>
+              </thead>
+              <tbody>`;
+
+      // Add data rows
+      reportData.data.forEach(record => {
+        printContent += '<tr>';
+        if (reportType === 'attendance') {
+          printContent += `
+            <td>${record.attendance_id || ''}</td>
+            <td>${record.employee_ID || ''}</td>
+            <td>${record.employee_name || 'Unknown'}</td>
+            <td>${record.division_name || 'Unknown'}</td>
+            <td>${record.section_name || 'Unknown'}</td>
+            <td>${record.date_ || ''}</td>
+            <td>${record.time_ || ''}</td>
+            <td><span class="status-badge ${record.scan_type?.toUpperCase() === 'IN' ? 'badge-in' : 'badge-out'}">${record.scan_type || ''}</span></td>`;
+        } else if (reportType === 'meal') {
+          printContent += `
+            <td>${record.id || ''}</td>
+            <td>${record.employee_id || ''}</td>
+            <td>${record.meal_date || ''}</td>
+            <td>${record.meal_type || ''}</td>
+            <td>${record.booking_time || ''}</td>
+            <td>${record.status || ''}</td>`;
+        }
+        printContent += '</tr>';
+      });
+
+      printContent += `
+              </tbody>
+            </table>
+          </body>
+        </html>`;
+
+      // Open print window
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
 
     } catch (err) {
-      console.error('Export error:', err);
-      setError('Failed to export report');
+      console.error('Print error:', err);
+      setError('Failed to print report');
     }
   };
 
@@ -393,18 +570,11 @@ const ReportGeneration = () => {
               {reportData && (
                 <div className="export-actions">
                   <button 
-                    className="export-btn csv"
-                    onClick={() => exportReport('csv')}
+                    className="export-btn print"
+                    onClick={printReport}
                   >
-                    <i className="bi bi-filetype-csv"></i>
-                    Export CSV
-                  </button>
-                  <button 
-                    className="export-btn json"
-                    onClick={() => exportReport('json')}
-                  >
-                    <i className="bi bi-filetype-json"></i>
-                    Export JSON
+                    <i className="bi bi-printer"></i>
+                    Print Report
                   </button>
                 </div>
               )}
