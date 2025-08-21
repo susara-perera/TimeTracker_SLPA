@@ -36,7 +36,51 @@ const createRole = async (req, res) => {
   }
 };
 
+// @desc Get a single role by id
+// @route GET /api/roles/:id
+// @access Private (admin, super_admin)
+const getRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const role = await Role.findById(id);
+    if (!role) return res.status(404).json({ success: false, message: 'Role not found' });
+    res.status(200).json({ success: true, data: role });
+  } catch (error) {
+    console.error('Get role error:', error);
+    res.status(500).json({ success: false, message: 'Server error getting role' });
+  }
+};
+
+// @desc Update a role (including permissions)
+// @route PUT /api/roles/:id
+// @access Private (super_admin)
+const updateRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = {};
+    const { label, description, permissions } = req.body;
+
+    if (label) updates.label = label;
+    if (description) updates.description = description;
+    if (permissions && typeof permissions === 'object') {
+      updates.permissions = permissions;
+    }
+
+    updates.updatedAt = Date.now();
+
+    const role = await Role.findByIdAndUpdate(id, updates, { new: true });
+    if (!role) return res.status(404).json({ success: false, message: 'Role not found' });
+
+    res.status(200).json({ success: true, data: role });
+  } catch (error) {
+    console.error('Update role error:', error);
+    res.status(500).json({ success: false, message: 'Server error updating role' });
+  }
+};
+
 module.exports = {
   getRoles,
-  createRole
+  createRole,
+  getRole,
+  updateRole
 };

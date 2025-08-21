@@ -6,6 +6,7 @@ const RoleAccessManagement = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState('');
+  const [selectedRoleId, setSelectedRoleId] = useState('');
   const [selectAll, setSelectAll] = useState(false);
   const [formData, setFormData] = useState({
     permissions: {}
@@ -13,6 +14,8 @@ const RoleAccessManagement = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
   const { user } = useContext(AuthContext);
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -52,9 +55,7 @@ const RoleAccessManagement = () => {
       name: 'Reports Management', 
       permissions: [
         { id: 'create', name: 'Generate Reports', description: 'Create system reports' },
-        { id: 'read', name: 'View Reports', description: 'Access and view reports' },
-        { id: 'update', name: 'Update Reports', description: 'Modify report settings' },
-        { id: 'delete', name: 'Delete Reports', description: 'Remove reports from system' }
+        { id: 'read', name: 'View Reports', description: 'Access and view reports' }
       ]
     },
     { 
@@ -96,7 +97,8 @@ const RoleAccessManagement = () => {
         if (res.ok) {
           const result = await res.json();
           if (Array.isArray(result.data) && result.data.length) {
-            setAvailableRoles(result.data.map(r => ({ value: r.value, label: r.label, description: r.description || '' })));
+            // include the database id so we can fetch role permissions
+            setAvailableRoles(result.data.map(r => ({ id: r._id, value: r.value, label: r.label, description: r.description || '' })));
           }
         } else {
           console.warn('Failed to fetch roles from backend, using defaults');
@@ -149,19 +151,45 @@ const RoleAccessManagement = () => {
     setSelectedRole(roleValue);
     
     if (roleValue) {
-      // Find a user with this role to get current permissions
-      const userWithRole = users.find(u => u.role === roleValue);
-      if (userWithRole) {
-        setFormData({
-          permissions: userWithRole.permissions || {}
-        });
-        updateSelectAllStatus(userWithRole.permissions || {});
+      // Find available role metadata (contains id)
+      const roleMeta = availableRoles.find(r => r.value === roleValue);
+      const roleId = roleMeta?.id;
+      setSelectedRoleId(roleId || '');
+
+      if (roleId) {
+        (async () => {
+          try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`http://localhost:5000/api/roles/${roleId}`, {
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              }
+            });
+
+            if (res.ok) {
+              const result = await res.json();
+              const roleDoc = result.data;
+              setFormData({ permissions: roleDoc.permissions || {} });
+              updateSelectAllStatus(roleDoc.permissions || {});
+            } else {
+              // fallback to user-based permissions if role doc cannot be fetched
+              const userWithRole = users.find(u => u.role === roleValue);
+              setFormData({ permissions: userWithRole?.permissions || {} });
+              updateSelectAllStatus(userWithRole?.permissions || {});
+            }
+          } catch (err) {
+            console.warn('Error fetching role document:', err);
+            const userWithRole = users.find(u => u.role === roleValue);
+            setFormData({ permissions: userWithRole?.permissions || {} });
+            updateSelectAllStatus(userWithRole?.permissions || {});
+          }
+        })();
       } else {
-        // If no user with this role exists, start with empty permissions
-        setFormData({
-          permissions: {}
-        });
-        setSelectAll(false);
+        // If no role id available, fallback to user-based permissions
+        const userWithRole = users.find(u => u.role === roleValue);
+        setFormData({ permissions: userWithRole?.permissions || {} });
+        updateSelectAllStatus(userWithRole?.permissions || {});
       }
     } else {
       setFormData({
@@ -254,79 +282,140 @@ const RoleAccessManagement = () => {
     return availablePermissions.reduce((total, category) => total + category.permissions.length, 0);
   };
 
-  // Handle form submission
-  const handleSubmit = async (e) => {
+  // Show confirmation modal instead of immediate submit
+  const openConfirm = (e) => {
     e.preventDefault();
     if (!isSuperAdmin) {
       setMessage('Only Super Admin can modify role permissions');
       setMessageType('error');
-      return;
-    }
-    
-    if (!selectedRole) {
-      setMessage('Please select a role first');
-      setMessageType('error');
+      setToastVisible(true);
+      setTimeout(() => setToastVisible(false), 4000);
       return;
     }
 
+    if (!selectedRole) {
+      setMessage('Please select a role first');
+      setMessageType('error');
+      setToastVisible(true);
+      setTimeout(() => setToastVisible(false), 4000);
+      return;
+    }
+
+    setShowConfirm(true);
+  };
+
+  // Confirm and perform save: persist to role doc then update users
+  const confirmAndSave = async () => {
+    setShowConfirm(false);
     setSubmitting(true);
-    
     try {
-      // Get all users with the selected role
-      const usersWithRole = users.filter(user => user.role === selectedRole);
-      
+      // Persist permissions to role document (if we have an id)
+      const token = localStorage.getItem('token');
+      let roleSaved = false;
+      let savedRoleResponse = null;
+      if (selectedRoleId) {
+        const res = await fetch(`http://localhost:5000/api/permissions/roles/${selectedRoleId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ permissions: formData.permissions })
+        });
+
+        const resJson = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // include server message if available
+          throw new Error(resJson.message || 'Failed to save role permissions');
+        }
+
+        roleSaved = true;
+        savedRoleResponse = resJson.data || null;
+
+        // Update local formData with authoritative permissions returned (if any)
+        if (savedRoleResponse && savedRoleResponse.permissions) {
+          setFormData({ permissions: savedRoleResponse.permissions });
+        }
+      }
+
+      // Now update users with the selected role
+      const usersWithRole = users.filter(u => u.role === selectedRole);
       if (usersWithRole.length === 0) {
+        // If we saved the role document, treat that as a successful save even if no users exist for the role
+        if (roleSaved) {
+          setMessage(`Role permissions saved successfully. No users found with role ${selectedRoleData?.label}`);
+          setMessageType('success');
+          setToastVisible(true);
+          setTimeout(() => setToastVisible(false), 4000);
+          setTimeout(() => { setMessage(''); setMessageType(''); }, 5000);
+          setSubmitting(false);
+          return;
+        }
+
         setMessage('No users found with the selected role');
         setMessageType('error');
+        setToastVisible(true);
+        setTimeout(() => setToastVisible(false), 4000);
         setSubmitting(false);
         return;
       }
 
-      // Update permissions for all users with this role
-      const updatePromises = usersWithRole.map(user => 
+      // Use auth token for user updates as well (backend typically requires auth)
+      const updatePromises = usersWithRole.map(user =>
         fetch(`http://localhost:5000/api/users/${user._id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
-          body: JSON.stringify({
-            permissions: formData.permissions
-          }),
-        })
+          body: JSON.stringify({ permissions: formData.permissions })
+        }).then(async r => ({ ok: r.ok, status: r.status, body: await r.json().catch(() => ({})), userId: user._id }))
       );
 
-      const responses = await Promise.all(updatePromises);
-      
-      // Check if all updates were successful
-      const allSuccessful = responses.every(response => response.ok);
-      
-      if (allSuccessful) {
-        // Update the users in state
-        setUsers(prevUsers => 
-          prevUsers.map(user => 
-            user.role === selectedRole 
-              ? { ...user, permissions: formData.permissions }
-              : user
-          )
-        );
-        
-        setMessage(`Permissions updated successfully for all ${usersWithRole.length} users with role: ${selectedRole}`);
+      const results = await Promise.all(updatePromises);
+      const failed = results.filter(r => !r.ok);
+
+      if (failed.length === 0) {
+        setUsers(prevUsers => prevUsers.map(u => u.role === selectedRole ? { ...u, permissions: formData.permissions } : u));
+        setMessage(`Permissions updated successfully for ${usersWithRole.length} user(s)`);
         setMessageType('success');
-        
-        // Auto-hide message after 5 seconds
-        setTimeout(() => {
-          setMessage('');
-          setMessageType('');
-        }, 5000);
+        setToastVisible(true);
+        console.log('RoleAccessManagement: permissions updated successfully for users', usersWithRole.map(u => u._id));
+        // Fallback native alert in case toast fails to render in some environments
+        try { 
+          const details = savedRoleResponse ? `\nSaved role permissions: ${JSON.stringify(savedRoleResponse.permissions)}` : '';
+          window.alert(`Permissions updated successfully for ${usersWithRole.length} user(s)${details}`);
+        } catch (e) { /* ignore */ }
+        setTimeout(() => setToastVisible(false), 4000);
+        // Auto-hide message area too
+        setTimeout(() => { setMessage(''); setMessageType(''); }, 5000);
+        // Notify the app that permissions have changed so current sessions can refresh
+        try {
+          window.dispatchEvent(new CustomEvent('permissionsChanged', { detail: { role: selectedRole } }));
+        } catch (e) { /* ignore */ }
       } else {
-        setMessage('Some users could not be updated. Please try again.');
+        // Build an informative message
+        const failedIds = failed.map(f => f.userId).slice(0, 5);
+        // collect server messages from failed responses
+        const serverMsgs = failed.map(f => (f.body && f.body.message) ? `${f.userId}: ${f.body.message}` : `${f.userId}: status ${f.status}`).slice(0,5);
+        setMessage(`Updated ${usersWithRole.length - failed.length}/${usersWithRole.length} users. Failed for: ${failedIds.join(', ')}${failed.length > 5 ? '...' : ''}`);
         setMessageType('error');
+        setToastVisible(true);
+        setTimeout(() => setToastVisible(false), 7000);
+        console.warn('RoleAccessManagement: some user updates failed', failed);
+        try { window.alert(`Updated ${usersWithRole.length - failed.length}/${usersWithRole.length} users. Some updates failed.\nDetails:\n${serverMsgs.join('\n')}`); } catch (e) {}
+        // Even on partial failure, notify app (some users may have new permissions)
+        try {
+          window.dispatchEvent(new CustomEvent('permissionsChanged', { detail: { role: selectedRole } }));
+        } catch (e) { /* ignore */ }
       }
-      
-    } catch (error) {
-      console.error('Error updating permissions:', error);
-      setMessage('Error updating role permissions. Please try again.');
+
+    } catch (err) {
+      console.error('Error saving permissions:', err);
+      setMessage(err.message || 'Error updating role permissions');
       setMessageType('error');
+      setToastVisible(true);
+      setTimeout(() => setToastVisible(false), 4000);
     } finally {
       setSubmitting(false);
     }
@@ -372,8 +461,16 @@ const RoleAccessManagement = () => {
           </div>
           
           <div className="card-body-custom">
-            {/* Success/Error Messages */}
-            {message && (
+            {/* Toast popup */}
+            {toastVisible && message && (
+              <div className={`toast-popup ${messageType === 'success' ? 'toast-success' : 'toast-error'}`}>
+                <i className={`bi ${messageType === 'success' ? 'bi-check-circle' : 'bi-exclamation-circle'} mr-2`}></i>
+                {message}
+              </div>
+            )}
+
+            {/* Inline message area */}
+            {message && !toastVisible && (
               <div className={`alert ${messageType === 'success' ? 'alert-success-modern' : 'alert-error-modern'}`}>
                 <i className={`bi ${messageType === 'success' ? 'bi-check-circle' : 'bi-exclamation-circle'} mr-2`}></i>
                 {message}
@@ -443,7 +540,7 @@ const RoleAccessManagement = () => {
             {/* Permissions Configuration */}
             {selectedRole && (
               <div className="form-section">
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={openConfirm}>
                   <h3 style={{ color: '#333', marginBottom: '20px', fontWeight: '600' }}>
                     <i className="bi bi-shield-alt text-primary mr-2"></i>
                     Configure Access Permissions for Role: <span style={{ color: '#667eea' }}>{selectedRoleData?.label}</span>
@@ -517,6 +614,7 @@ const RoleAccessManagement = () => {
                       className="btn-save-modern"
                       disabled={submitting || !isSuperAdmin}
                       title={!isSuperAdmin ? 'Only Super Admin can apply changes' : ''}
+                      onClick={openConfirm}
                     >
                       {submitting ? (
                         <>
@@ -544,6 +642,25 @@ const RoleAccessManagement = () => {
       {submitting && (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirm && (
+        <div className="modal-overlay" onClick={() => setShowConfirm(false)}>
+          <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h4>Confirm Permission Changes</h4>
+            </div>
+            <div className="modal-body">
+              <p>You're about to apply the selected permissions to <strong>{selectedRoleUserCount}</strong> user(s) with the role <strong>{selectedRoleData?.label}</strong>.</p>
+              <p>This action will update both the role's permission document and the users' effective permissions. Are you sure you want to continue?</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-professional btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
+              <button className="btn-professional btn-success" onClick={confirmAndSave}>Yes, apply changes</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import usePermission from '../../hooks/usePermission';
 import './ReportGeneration.css';
 
 const ReportGeneration = () => {
@@ -17,6 +18,10 @@ const ReportGeneration = () => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState('');
+
+  // permission checks
+  const canGenerate = usePermission('reports', 'create');
+  const canView = usePermission('reports', 'read');
 
   // Fetch divisions and sections on component mount
   useEffect(() => {
@@ -379,7 +384,15 @@ const ReportGeneration = () => {
             </div>
           </div>
 
-          <div className="action-section">
+            <div className="action-section">
+            {/* Permission banner: inform user which report actions are disabled */}
+            {(!canGenerate || !canView) && (
+              <div className="permission-banner">
+                { !canGenerate && <span className="banner-item">You do not have permission to generate reports.</span> }
+                { !canView && <span className="banner-item">You do not have permission to view/export reports.</span> }
+                <span className="banner-help">Contact a Super Admin for access.</span>
+              </div>
+            )}
             <div>
               {error && (
                 <div className="error-message">
@@ -394,14 +407,18 @@ const ReportGeneration = () => {
                 <div className="export-actions">
                   <button 
                     className="export-btn csv"
-                    onClick={() => exportReport('csv')}
+                    onClick={() => { if (!canView) { setError('You do not have permission to export reports.'); return; } exportReport('csv'); }}
+                    disabled={!canView}
+                    title={!canView ? 'No permission to export' : 'Export CSV'}
                   >
                     <i className="bi bi-filetype-csv"></i>
                     Export CSV
                   </button>
                   <button 
                     className="export-btn json"
-                    onClick={() => exportReport('json')}
+                    onClick={() => { if (!canView) { setError('You do not have permission to export reports.'); return; } exportReport('json'); }}
+                    disabled={!canView}
+                    title={!canView ? 'No permission to export' : 'Export JSON'}
                   >
                     <i className="bi bi-filetype-json"></i>
                     Export JSON
@@ -411,8 +428,9 @@ const ReportGeneration = () => {
               
               <button 
                 className="generate-btn"
-                onClick={generateReport}
-                disabled={loading}
+                onClick={() => { if (!canGenerate) { setError('You do not have permission to generate reports.'); return; } generateReport(); }}
+                disabled={loading || !canGenerate}
+                title={!canGenerate ? 'No permission to generate reports' : 'Generate Report'}
               >
                 {loading ? (
                   <>

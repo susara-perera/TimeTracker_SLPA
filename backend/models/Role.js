@@ -7,6 +7,11 @@ const RoleSchema = new mongoose.Schema({
   // Store a copy of the label in `name` to avoid null/duplicate key issues.
   name: { type: String, default: '' },
   description: { type: String, default: '' },
+  // permissions is a free-form object describing allowed actions.
+  // Example shape:
+  // { users: { create: true, edit: false, delete: false }, reports: { view: true } }
+  permissions: { type: Object, default: {} },
+  updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
 });
 

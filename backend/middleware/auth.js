@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
+const Role = require('../models/Role');
 
 // Verify JWT token
 const auth = async (req, res, next) => {
@@ -41,6 +42,27 @@ const auth = async (req, res, next) => {
     }
 
     req.user = user;
+    // Attach merged permissions from role + user
+    try {
+      const roleDoc = await Role.findOne({ value: user.role });
+      const rolePermissions = roleDoc?.permissions || {};
+
+      const merged = { ...rolePermissions };
+      if (user.permissions && typeof user.permissions === 'object') {
+        Object.keys(user.permissions).forEach(cat => {
+          merged[cat] = {
+            ...(merged[cat] || {}),
+            ...(user.permissions[cat] || {})
+          };
+        });
+      }
+
+      req.user.permissions = merged;
+    } catch (err) {
+      // If role lookup fails, still continue with user permissions
+      req.user.permissions = user.permissions || {};
+      console.warn('Failed to merge role permissions in auth middleware:', err);
+    }
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {

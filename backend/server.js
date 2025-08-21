@@ -154,6 +154,7 @@ app.use('/api/reports', require('./routes/report'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/mysql', require('./routes/mysql'));
 app.use('/api/roles', require('./routes/role'));
+app.use('/api/permissions', require('./routes/permission'));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

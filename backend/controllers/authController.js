@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const Role = require('../models/Role');
 const AuditLog = require('../models/AuditLog');
 
 // Generate JWT Token
@@ -188,6 +189,26 @@ const login = async (req, res) => {
 
     res.cookie('token', token, cookieOptions);
 
+    // Merge role permissions with user-specific permissions (user overrides role)
+    let rolePermissions = {};
+    try {
+      const roleDoc = await Role.findOne({ value: user.role });
+      rolePermissions = roleDoc?.permissions || {};
+    } catch (err) {
+      console.warn('Could not load role permissions during login:', err);
+      rolePermissions = {};
+    }
+
+    const mergedPermissions = { ...rolePermissions };
+    if (user.permissions && typeof user.permissions === 'object') {
+      Object.keys(user.permissions).forEach(cat => {
+        mergedPermissions[cat] = {
+          ...(mergedPermissions[cat] || {}),
+          ...(user.permissions[cat] || {})
+        };
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Login successful',
@@ -202,7 +223,7 @@ const login = async (req, res) => {
         role: user.role,
         division: user.division,
         section: user.section,
-        permissions: user.permissions,
+        permissions: mergedPermissions,
         lastLogin: user.lastLogin
       }
     });

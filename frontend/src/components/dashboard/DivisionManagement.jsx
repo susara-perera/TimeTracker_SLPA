@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import usePermission from '../../hooks/usePermission';
 
 const DivisionManagement = () => {
   const [divisions, setDivisions] = useState([]);
@@ -12,6 +13,10 @@ const DivisionManagement = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const canView = usePermission('divisions', 'read');
+  const canCreate = usePermission('divisions', 'create');
+  const canUpdate = usePermission('divisions', 'update');
+  const canDelete = usePermission('divisions', 'delete');
 
   // Fetch divisions from API
   const fetchDivisions = async () => {
@@ -217,13 +222,31 @@ const DivisionManagement = () => {
     return <div className="loading-container">Loading...</div>;
   }
 
+  if (!canView) {
+    return (
+      <div className="division-management">
+        <div className="section-header">
+          <h2><i className="bi bi-building"></i> Division Management</h2>
+        </div>
+        <div className="professional-card">
+          <div className="no-data">
+            <p>You do not have permission to view divisions. Contact a Super Admin for access.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="division-management">
       <div className="section-header">
         <h2><i className="bi bi-building"></i> Division Management</h2>
         <button 
           className="btn-professional btn-primary"
-          onClick={handleAdd}
+          onClick={canCreate ? handleAdd : undefined}
+          disabled={!canCreate}
+          title={!canCreate ? 'You do not have permission to add divisions' : 'Add Division'}
+          style={{ cursor: canCreate ? 'pointer' : 'not-allowed' }}
         >
           <i className="bi bi-plus-circle"></i> Add Division
         </button>
@@ -265,17 +288,20 @@ const DivisionManagement = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button 
                         className="btn-professional btn-primary"
-                        onClick={() => handleEdit(division)}
-                        title="Edit Division"
-                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                        onClick={canUpdate ? () => handleEdit(division) : undefined}
+                        title={!canUpdate ? 'No permission to edit divisions' : 'Edit Division'}
+                        disabled={!canUpdate}
+                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canUpdate ? 'pointer' : 'not-allowed' }}
                       >
                         <i className="bi bi-pencil"></i>
                       </button>
++                      
                       <button 
                         className="btn-professional btn-danger"
-                        onClick={() => handleDelete(division)}
-                        title="Delete Division"
-                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                        onClick={canDelete ? () => handleDelete(division) : undefined}
+                        title={!canDelete ? 'No permission to delete divisions' : 'Delete Division'}
+                        disabled={!canDelete}
+                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canDelete ? 'pointer' : 'not-allowed' }}
                       >
                         <i className="bi bi-trash"></i>
                       </button>

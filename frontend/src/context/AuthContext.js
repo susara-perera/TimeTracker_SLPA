@@ -12,7 +12,6 @@ export const AuthProvider = ({ children }) => {
       try {
         const token = localStorage.getItem('token');
         if (token) {
-          // Verify token with backend
           const response = await fetch('http://localhost:5000/api/auth/verify', {
             method: 'GET',
             headers: {
@@ -42,6 +41,39 @@ export const AuthProvider = ({ children }) => {
     };
 
     checkAuthStatus();
+
+    const permissionsHandler = async (e) => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const response = await fetch('http://localhost:5000/api/auth/verify', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.user) setUser(data.user);
+        }
+      } catch (err) {
+        console.warn('permissionsChanged handler error:', err);
+      }
+    };
+
+    const roleAddedHandler = (e) => {
+      // placeholder: other components listen for roleAdded
+    };
+
+    window.addEventListener('permissionsChanged', permissionsHandler);
+    window.addEventListener('roleAdded', roleAddedHandler);
+
+    return () => {
+      window.removeEventListener('permissionsChanged', permissionsHandler);
+      window.removeEventListener('roleAdded', roleAddedHandler);
+    };
   }, []);
 
   const login = async (credentials) => {
