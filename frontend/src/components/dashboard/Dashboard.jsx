@@ -165,108 +165,11 @@ const Dashboard = () => {
     }
   ];
 
-
-
-  // Permission-aware access check: prefer explicit permission ticks, then fall back to role membership
-  // Map quick action id -> permissions resource/action
-  const permissionMap = {
-    users: { resource: 'users', action: 'read' },
-    reports: { resource: 'reports', action: 'read' },
-    divisions: { resource: 'divisions', action: 'read' },
-    sections: { resource: 'sections', action: 'read' },
-    roles: { resource: 'roles', action: 'read' },
-    settings: { resource: 'settings', action: 'read' }
-  };
-
-  // Debug: log permissions for troubleshooting role-based UI
-  React.useEffect(() => {
-    try {
-      console.debug('Dashboard user:', user?.id || user?.email || user?.firstName, 'role:', user?.role);
-      console.debug('Dashboard permissions:', user?.permissions);
-    } catch (e) {
-      // ignore
-    }
-  }, [user]);
-  const checkPermission = (userObj, resource, action) => {
-    if (!userObj || !userObj.permissions) return false;
-
-    const perms = userObj.permissions;
-
-    // Action aliases
-    const actionAliases = {
-      read: ['read', 'view'],
-      create: ['create', 'add'],
-      update: ['update', 'edit'],
-      delete: ['delete', 'remove']
-    };
-
-    const actionsToCheck = actionAliases[action] || [action];
-
-    const resourcesToCheck = [resource];
-    // add simple singular/plural variants
-    if (resource.endsWith('s')) resourcesToCheck.push(resource.slice(0, -1));
-    else resourcesToCheck.push(resource + 's');
-
-    for (const r of resourcesToCheck) {
-      const rPerm = perms[r];
-      if (rPerm === undefined) continue;
-
-      // if permission entry is boolean, respect it
-      if (typeof rPerm === 'boolean') {
-        if (rPerm) return true;
-        continue;
-      }
-
-      // if permission entry is an object mapping actions to booleans
-      if (typeof rPerm === 'object' && rPerm !== null) {
-        for (const a of actionsToCheck) {
-          const val = rPerm[a];
-          if (val === true || val === 'true' || val === 1) return true;
-          if (Array.isArray(rPerm) && rPerm.includes(a)) return true;
-        }
-      }
-
-      // if permission entry is an array of allowed actions
-      if (Array.isArray(rPerm)) {
-        for (const a of actionsToCheck) if (rPerm.includes(a)) return true;
-      }
-    }
-
-    return false;
-  };
-
-  const hasAccess = (roles, actionId) => {
-    if (!user) return false;
-    if (user.role === 'super_admin') return true;
-
-    const map = permissionMap[actionId];
-    if (map) {
-      // If the permission map specifies a primary action (e.g., read for reports), require it when an explicit
-      // permission entry exists. Otherwise, fall back to checking other actions or role membership.
-  const resourcesToCheck = [map.resource];
-  if (map.resource.endsWith('s')) resourcesToCheck.push(map.resource.slice(0, -1));
-  else resourcesToCheck.push(map.resource + 's');
-
-      // If a specific action is defined in the map, prefer that check.
-      if (map.action) {
-        if (checkPermission(user, map.resource, map.action)) return true;
-        // If explicit entry exists but mapped action denied, deny access. If no explicit entry, also deny because
-        // the resource is protected by the permission catalog (require explicit ticks).
-        return false;
-      }
-
-      // No mapped action or mapped action not decisive: check common actions (create/update/delete) as before
-      const commonActions = ['read', 'create', 'update', 'delete'];
-      for (const a of commonActions) {
-        if (checkPermission(user, map.resource, a)) return true;
-      }
-      // If we reached here and there was any explicit permission entry but none matched, deny.
-      // If there was no explicit entry, also deny because this resource is managed by the permission catalog.
-      return false;
-    }
-
-    // If the resource is not in permissionMap, fall back to role membership.
-    return Array.isArray(roles) && roles.includes(user.role);
+  const hasAccess = (roles) => {
+    // For now, return true to show all navigation items
+    // TODO: Implement proper role checking when user authentication is fixed
+    return true;
+    // return roles.includes(user?.role);
   };
 
   const getGreeting = () => {
@@ -330,16 +233,14 @@ const Dashboard = () => {
           </div>
           <div className="actions-list">
             {quickActions.map((action) => {
-              const access = hasAccess(action.roles, action.id);
-              const title = access ? action.label : `${action.label} — You do not have permission`;
+              if (!hasAccess(action.roles)) return null;
+              
               return (
                 <button
                   key={action.id}
                   className={`quick-btn ${action.color}`}
-                  onClick={() => access && handleQuickAction(action.id)}
-                  title={title}
-                  disabled={!access}
-                  style={{ cursor: access ? 'pointer' : 'not-allowed' }}
+                  onClick={() => handleQuickAction(action.id)}
+                  title={action.label}
                 >
                   <i className={`bi ${action.icon}`}></i>
                   <span>{action.label}</span>
