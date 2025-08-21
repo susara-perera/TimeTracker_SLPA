@@ -12,6 +12,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const token = localStorage.getItem('token');
         if (token) {
+          // Verify token with backend
           const response = await fetch('http://localhost:5000/api/auth/verify', {
             method: 'GET',
             headers: {
@@ -41,12 +42,15 @@ export const AuthProvider = ({ children }) => {
     };
 
     checkAuthStatus();
+  }, []);
 
-    const permissionsHandler = async (e) => {
+  // Refresh current user when permissions change elsewhere in the app
+  useEffect(() => {
+    const handler = async (e) => {
       try {
         const token = localStorage.getItem('token');
         if (!token) return;
-        const response = await fetch('http://localhost:5000/api/auth/verify', {
+        const res = await fetch('http://localhost:5000/api/auth/verify', {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -54,27 +58,55 @@ export const AuthProvider = ({ children }) => {
           },
           credentials: 'include'
         });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.user) setUser(data.user);
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (data && data.success && data.user) {
+          setUser(data.user);
         }
       } catch (err) {
         console.warn('permissionsChanged handler error:', err);
       }
     };
 
-    const roleAddedHandler = (e) => {
-      // placeholder: other components listen for roleAdded
-    };
-
-    window.addEventListener('permissionsChanged', permissionsHandler);
-    window.addEventListener('roleAdded', roleAddedHandler);
-
-    return () => {
-      window.removeEventListener('permissionsChanged', permissionsHandler);
-      window.removeEventListener('roleAdded', roleAddedHandler);
-    };
+    window.addEventListener('permissionsChanged', handler);
+    return () => window.removeEventListener('permissionsChanged', handler);
   }, []);
+
+  // Poll backend periodically to pick up permission changes made by other users/sessions
+  useEffect(() => {
+    let intervalId;
+    const startPolling = () => {
+      intervalId = setInterval(async () => {
+        try {
+          const token = localStorage.getItem('token');
+          if (!token) return;
+          const res = await fetch('http://localhost:5000/api/auth/verify', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+          });
+          if (!res.ok) return;
+          const data = await res.json().catch(() => ({}));
+          if (data && data.success && data.user) {
+            // Update local user only if permissions changed to avoid unnecessary rerenders
+            const currentPerms = JSON.stringify(user?.permissions || {});
+            const newPerms = JSON.stringify(data.user.permissions || {});
+            if (currentPerms !== newPerms) {
+              setUser(data.user);
+            }
+          }
+        } catch (err) {
+          // Ignore polling errors silently
+        }
+      }, 15000); // every 15 seconds
+    };
+
+    if (user) startPolling();
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   const login = async (credentials) => {
     try {
