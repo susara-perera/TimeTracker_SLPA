@@ -177,243 +177,302 @@ const ReportGeneration = () => {
     }
 
     try {
-      // Create print content
+      // Get employee info from first record for individual reports
+      const firstRecord = reportData.data[0];
+      const isIndividualReport = reportScope === 'individual';
+      
+      // Group data by date for individual reports
+      const groupedData = {};
+      if (isIndividualReport) {
+        reportData.data.forEach(record => {
+          const date = record.date_;
+          if (!groupedData[date]) {
+            groupedData[date] = [];
+          }
+          groupedData[date].push(record);
+        });
+      }
+
+      // Create print content matching the image format
       let printContent = `
         <html>
           <head>
             <title>Attendance Report</title>
             <style>
+              @page {
+                margin: 0.5in;
+                size: A4;
+              }
+              
               body { 
-                font-family: Arial, sans-serif; 
-                margin: 20px; 
-                color: #333;
-              }
-              .print-header { 
-                text-align: center; 
-                margin-bottom: 30px;
-                border-bottom: 2px solid #3b82f6;
-                padding-bottom: 20px;
-              }
-              .print-header h1 { 
-                color: #1e293b; 
+                font-family: 'Courier New', monospace;
                 margin: 0;
-                font-size: 24px;
+                padding: 0;
+                font-size: 11px;
+                line-height: 1.2;
+                color: #000;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
               }
-              .print-header h2 { 
-                color: #64748b; 
-                margin: 5px 0;
-                font-size: 18px;
-                font-weight: normal;
+              
+              .report-header { 
+                margin-bottom: 15px;
               }
-              .report-info {
-                background: #f8fafc;
-                padding: 15px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-              }
-              .report-info table {
-                width: 100%;
-                border-collapse: collapse;
-              }
-              .report-info td {
-                padding: 5px 10px;
-                border: none;
-              }
-              .report-info .label {
+              
+              .report-title {
                 font-weight: bold;
-                color: #475569;
-              }
-              table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-top: 20px;
-              }
-              th, td { 
-                border: 1px solid #d1d5db; 
-                padding: 8px; 
-                text-align: left;
-                font-size: 12px;
-              }
-              th { 
-                background-color: #3b82f6; 
-                color: white;
-                font-weight: bold;
-              }
-              tr:nth-child(even) { 
-                background-color: #f9fafb; 
-              }
-              .stats-summary {
-                display: flex;
-                justify-content: space-around;
-                margin: 20px 0;
-                background: #f0f9ff;
-                padding: 15px;
-                border-radius: 8px;
-              }
-              .stat-item {
+                font-size: 14px;
+                margin-bottom: 3px;
                 text-align: center;
               }
-              .stat-number {
-                display: block;
-                font-size: 24px;
-                font-weight: bold;
-                color: #3b82f6;
-              }
-              .stat-label {
-                font-size: 12px;
-                color: #64748b;
-              }
-              .status-badge {
-                padding: 2px 8px;
-                border-radius: 12px;
+              
+              .report-subtitle {
                 font-size: 11px;
+                margin-bottom: 10px;
+                text-align: center;
+              }
+              
+              .header-info {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 10px;
+              }
+              
+              .left-info, .right-info {
+                font-size: 10px;
+              }
+              
+              .employee-info {
+                margin-bottom: 10px;
+                font-size: 11px;
+              }
+              
+              .date-range {
+                margin-bottom: 15px;
+                font-size: 11px;
+                text-align: center;
+              }
+              
+              .data-table { 
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 10px;
+                margin-bottom: 20px;
+                border: 1px solid #000;
+                table-layout: fixed;
+              }
+              
+              .data-table th { 
+                border: 1px solid #000;
+                padding: 4px 6px;
+                text-align: center;
+                font-weight: bold;
+                background: #f5f5f5;
+                font-size: 10px;
+              }
+              
+              .data-table td { 
+                border: 1px solid #000;
+                padding: 4px 6px;
+                text-align: center;
+                margin: 0;
+                vertical-align: top;
+                font-size: 10px;
+              }
+              
+              .date-cell {
+                text-align: left;
+                vertical-align: top;
+                padding: 4px 6px;
+                font-weight: bold;
+                line-height: 1.2;
+              }
+              
+              .date-cell-empty {
+                padding: 4px 6px;
+                text-align: center;
+              }
+              
+              .function-col {
+                text-align: center;
                 font-weight: bold;
               }
-              .badge-in {
-                background-color: #dcfce7;
-                color: #166534;
+              
+              .on-status {
+                font-weight: bold;
               }
-              .badge-out {
-                background-color: #fef2f2;
-                color: #dc2626;
+              
+              .off-status {
+                font-weight: bold;
               }
-              @media print {
-                body { margin: 0; }
-                .no-print { display: none; }
+              
+              .signature-section {
+                margin-top: 50px;
+                display: flex;
+                justify-content: space-between;
+                font-size: 10px;
+                align-items: flex-end;
+              }
+              
+              .signature-block {
+                text-align: center;
+                min-width: 150px;
+              }
+              
+              .signature-line {
+                border-bottom: 1px solid #000;
+                height: 40px;
+                margin-bottom: 5px;
+                width: 100%;
+              }
+              
+              .signature-label {
+                font-size: 10px;
+                font-weight: normal;
               }
             </style>
           </head>
           <body>
-            <div class="print-header">
-              <h1>Sri Lanka Ports Authority</h1>
-              <h2>Attendance Report</h2>
-            </div>
-            
-            <div class="report-info">
-              <table>
-                <tr>
-                  <td class="label">Report Type:</td>
-                  <td>${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report</td>
-                  <td class="label">Report Scope:</td>
-                  <td>${reportScope.charAt(0).toUpperCase() + reportScope.slice(1)}</td>
-                </tr>
-                <tr>
-                  <td class="label">Date Range:</td>
-                  <td>${dateRange.startDate} to ${dateRange.endDate}</td>
-                  <td class="label">Generated:</td>
-                  <td>${new Date().toLocaleString()}</td>
-                </tr>`;
+            <div class="report-header">
+              <div class="report-title">Unit Attendance Report</div>
+              <div class="report-subtitle">All Granted(ID & FP) Records</div>
+              
+              <div class="header-info">
+                <div class="left-info">`;
 
-      // Add division/section info if applicable
-      if (reportScope === 'group' && reportType === 'attendance') {
-        if (divisionId !== 'all') {
-          const selectedDivision = divisions.find(d => d.division_id === divisionId);
-          if (selectedDivision) {
-            printContent += `
-                <tr>
-                  <td class="label">Division:</td>
-                  <td colspan="3">${selectedDivision.division_name}</td>
-                </tr>`;
-          }
-        }
-        if (sectionId !== 'all') {
-          const selectedSection = sections.find(s => s.section_id === sectionId);
-          if (selectedSection) {
-            printContent += `
-                <tr>
-                  <td class="label">Section:</td>
-                  <td colspan="3">${selectedSection.section_name}</td>
-                </tr>`;
-          }
-        }
-      }
-
-      printContent += `
-              </table>
-            </div>`;
-
-      // Add statistics summary for attendance reports
-      if (reportType === 'attendance' && reportData.summary) {
+      if (isIndividualReport && firstRecord) {
         printContent += `
-            <div class="stats-summary">
-              <div class="stat-item">
-                <span class="stat-number">${reportData.summary.total_records}</span>
-                <span class="stat-label">Total Records</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">${reportData.summary.unique_employees}</span>
-                <span class="stat-label">Unique Employees</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">${reportData.summary.in_scans}</span>
-                <span class="stat-label">IN Scans</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">${reportData.summary.out_scans}</span>
-                <span class="stat-label">OUT Scans</span>
-              </div>
-            </div>`;
+                  <div>Emp No :- ${firstRecord.employee_ID || 'N/A'}</div>
+                  <div>Emp Name :- ${firstRecord.employee_name || 'Unknown'}</div>`;
       }
 
-      // Add data table
       printContent += `
-            <table>
+                </div>
+                <div class="right-info">
+                  <div>Printed Date : ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+                  <div>Printed Time : ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                  <div>Page 1 of 1</div>
+                </div>
+              </div>
+              
+              <div class="date-range">
+                <strong>Date From</strong> ${new Date(dateRange.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })} 
+                <strong style="margin-left: 40px;">To</strong> ${new Date(dateRange.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
+              </div>
+            </div>`;
+
+      // Create table with proper format
+      printContent += `
+            <table class="data-table">
               <thead>
-                <tr>`;
-
-      if (reportType === 'attendance') {
-        printContent += `
-                  <th>Attendance ID</th>
-                  <th>Employee ID</th>
-                  <th>Employee Name</th>
-                  <th>Division</th>
-                  <th>Section</th>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Status</th>`;
-      } else if (reportType === 'meal') {
-        printContent += `
-                  <th>ID</th>
-                  <th>Employee ID</th>
-                  <th>Meal Date</th>
-                  <th>Meal Type</th>
-                  <th>Booking Time</th>
-                  <th>Status</th>`;
-      }
-
-      printContent += `
+                <tr>
+                  <th style="width: 18%;">Punch Date</th>
+                  <th style="width: 12%;">Punch Time</th>
+                  <th style="width: 10%;">Function</th>
+                  <th style="width: 20%;">Event Description</th>
+                  <th style="width: 40%;">Remarks</th>
                 </tr>
               </thead>
               <tbody>`;
 
-      // Add data rows
-      reportData.data.forEach(record => {
-        printContent += '<tr>';
-        if (reportType === 'attendance') {
-          printContent += `
-            <td>${record.attendance_id || ''}</td>
-            <td>${record.employee_ID || ''}</td>
-            <td>${record.employee_name || 'Unknown'}</td>
-            <td>${record.division_name || 'Unknown'}</td>
-            <td>${record.section_name || 'Unknown'}</td>
-            <td>${record.date_ || ''}</td>
-            <td>${record.time_ || ''}</td>
-            <td><span class="status-badge ${record.scan_type?.toUpperCase() === 'IN' ? 'badge-in' : 'badge-out'}">${record.scan_type || ''}</span></td>`;
-        } else if (reportType === 'meal') {
-          printContent += `
-            <td>${record.id || ''}</td>
-            <td>${record.employee_id || ''}</td>
-            <td>${record.meal_date || ''}</td>
-            <td>${record.meal_type || ''}</td>
-            <td>${record.booking_time || ''}</td>
-            <td>${record.status || ''}</td>`;
-        }
-        printContent += '</tr>';
-      });
+      if (isIndividualReport) {
+        // Sort dates and group data properly
+        const sortedDates = Object.keys(groupedData).sort();
+        
+        sortedDates.forEach(date => {
+          const records = groupedData[date];
+          const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
+          const day = new Date(date).getDate().toString().padStart(2, '0');
+          const month = new Date(date).toLocaleDateString('en-GB', { month: 'short' });
+          const year = new Date(date).getFullYear().toString().slice(-2);
+          const formattedDate = `${day}-${month}-${year}`;
+          
+          // Sort records by time for each date
+          records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
+          
+          records.forEach((record, index) => {
+            const isOnScan = record.scan_type?.toUpperCase() === 'IN';
+            const functionCode = isOnScan ? 'F1-0' : 'F4-0';
+            const status = isOnScan ? 'ON' : 'OFF';
+            const showDate = index === 0; // Only show date on first row for each date group
+            
+            printContent += `
+                <tr>
+                  <td class="${showDate ? 'date-cell' : 'date-cell-empty'}">
+                    ${showDate ? `${formattedDate}<br/>${dayName}` : ''}
+                  </td>
+                  <td>${record.time_ || ''}</td>
+                  <td class="function-col">${functionCode}</td>
+                  <td class="${isOnScan ? 'on-status' : 'off-status'}">${status}</td>
+                  <td>Granted(ID & F) COM0002</td>
+                </tr>`;
+          });
+        });
+      } else {
+        // Group report - group by date and show clean format
+        const groupedData = {};
+        reportData.data.forEach(record => {
+          const dateKey = record.date_;
+          if (!groupedData[dateKey]) {
+            groupedData[dateKey] = [];
+          }
+          groupedData[dateKey].push(record);
+        });
+
+        const sortedDates = Object.keys(groupedData).sort();
+        
+        sortedDates.forEach(dateKey => {
+          const records = groupedData[dateKey];
+          records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
+          
+          records.forEach((record, index) => {
+            const isOnScan = record.scan_type?.toUpperCase() === 'IN';
+            const functionCode = isOnScan ? 'F1-0' : 'F4-0';
+            const status = isOnScan ? 'ON' : 'OFF';
+            const showDate = index === 0;
+            
+            const day = new Date(record.date_).getDate().toString().padStart(2, '0');
+            const month = new Date(record.date_).toLocaleDateString('en-GB', { month: 'short' });
+            const year = new Date(record.date_).getFullYear().toString().slice(-2);
+            const dayName = new Date(record.date_).toLocaleDateString('en-US', { weekday: 'short' });
+            const formattedDate = `${day}-${month}-${year}`;
+            
+            printContent += `
+                <tr>
+                  <td class="${showDate ? 'date-cell' : 'date-cell-empty'}">
+                    ${showDate ? `${formattedDate}<br/>${dayName}` : ''}
+                  </td>
+                  <td>${record.time_ || ''}</td>
+                  <td class="function-col">${functionCode}</td>
+                  <td class="${isOnScan ? 'on-status' : 'off-status'}">${status}</td>
+                  <td>Granted(ID & F) COM0002</td>
+                </tr>`;
+          });
+        });
+      }
 
       printContent += `
               </tbody>
             </table>
+            
+            <div class="signature-section">
+              <div class="signature-block">
+                <div class="signature-line"></div>
+                <div class="signature-label">User</div>
+              </div>
+              <div class="signature-block">
+                <div class="signature-line"></div>
+                <div class="signature-label">Date</div>
+              </div>
+              <div class="signature-block">
+                <div class="signature-line"></div>
+                <div class="signature-label">Authorized Signature 1</div>
+              </div>
+              <div class="signature-block">
+                <div class="signature-line"></div>
+                <div class="signature-label">Authorized Signature 2</div>
+              </div>
+            </div>
           </body>
         </html>`;
 
@@ -672,7 +731,7 @@ const ReportGeneration = () => {
             {/* Data Section */}
             <div className="data-section">
               <div className="data-header">
-                <h4 className="data-title">Detailed Records</h4>
+                <h4 className="data-title">Unit Attendance Report</h4>
                 <span className="record-count">{reportData.data.length} records</span>
               </div>
 
@@ -683,57 +742,88 @@ const ReportGeneration = () => {
                       <tr>
                         {reportType === 'attendance' && (
                           <>
-                            <th>Attendance ID</th>
-                            <th>Employee ID</th>
-                            <th>Employee Name</th>
-                            <th>Division</th>
-                            <th>Section</th>
-                            <th>Date</th>
-                            <th>Time</th>
-                            <th>Status</th>
+                            <th style={{width: '15%'}}>PUNCH DATE</th>
+                            <th style={{width: '12%'}}>PUNCH TIME</th>
+                            <th style={{width: '10%'}}>FUNCTION</th>
+                            <th style={{width: '15%'}}>EVENT DESCRIPTION</th>
+                            <th style={{width: '48%'}}>REMARKS</th>
                           </>
                         )}
                         {reportType === 'meal' && (
                           <>
-                            <th>ID</th>
-                            <th>Employee ID</th>
-                            <th>Meal Date</th>
-                            <th>Meal Type</th>
-                            <th>Booking Time</th>
-                            <th>Status</th>
+                            <th style={{width: '8%'}}>ID</th>
+                            <th style={{width: '12%'}}>EMPLOYEE ID</th>
+                            <th style={{width: '15%'}}>MEAL DATE</th>
+                            <th style={{width: '15%'}}>MEAL TYPE</th>
+                            <th style={{width: '15%'}}>BOOKING TIME</th>
+                            <th style={{width: '10%'}}>STATUS</th>
                           </>
                         )}
                       </tr>
                     </thead>
                     <tbody>
-                      {reportData.data.slice(0, 100).map((record, index) => (
+                      {reportType === 'attendance' && (() => {
+                        // Group data by date for proper formatting
+                        const groupedData = {};
+                        reportData.data.forEach(record => {
+                          const dateKey = record.date_;
+                          if (!groupedData[dateKey]) {
+                            groupedData[dateKey] = [];
+                          }
+                          groupedData[dateKey].push(record);
+                        });
+
+                        const sortedDates = Object.keys(groupedData).sort();
+                        const rows = [];
+
+                        sortedDates.forEach(dateKey => {
+                          const records = groupedData[dateKey];
+                          // Sort records by time
+                          records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
+                          
+                          records.forEach((record, index) => {
+                            const showDate = index === 0; // Only show date on first row for each date group
+                            const date = new Date(record.date_);
+                            const day = date.getDate().toString().padStart(2, '0');
+                            const month = date.toLocaleDateString('en-GB', { month: 'short' });
+                            const year = date.getFullYear().toString().slice(-2);
+                            const weekday = date.toLocaleDateString('en-GB', { weekday: 'short' });
+                            const formattedDate = `${day}-${month}-${year}`;
+
+                            rows.push(
+                              <tr key={`${dateKey}-${index}`} className={showDate ? 'date-group-row' : 'time-row'}>
+                                <td className={showDate ? 'date-cell-with-data' : 'date-cell-empty'}>
+                                  {showDate && (
+                                    <div>
+                                      <div className="date-line">{formattedDate}</div>
+                                      <div className="weekday-line">{weekday}</div>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="time-column">{record.time_}</td>
+                                <td className="function-column">
+                                  {record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0'}
+                                </td>
+                                <td className="event-description">
+                                  {record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'}
+                                </td>
+                                <td className="remarks-column">Granted(ID & F) COM0002</td>
+                              </tr>
+                            );
+                          });
+                        });
+
+                        return rows;
+                      })()}
+                      
+                      {reportType === 'meal' && reportData.data.slice(0, 100).map((record, index) => (
                         <tr key={index}>
-                          {reportType === 'attendance' && (
-                            <>
-                              <td>{record.attendance_id}</td>
-                              <td>{record.employee_ID}</td>
-                              <td>{record.employee_name || 'Unknown'}</td>
-                              <td>{record.division_name || 'Unknown'}</td>
-                              <td>{record.section_name || 'Unknown'}</td>
-                              <td>{record.date_}</td>
-                              <td>{record.time_}</td>
-                              <td>
-                                <span className={`status-badge ${record.scan_type?.toUpperCase() === 'IN' ? 'badge-in' : 'badge-out'}`}>
-                                  {record.scan_type}
-                                </span>
-                              </td>
-                            </>
-                          )}
-                          {reportType === 'meal' && (
-                            <>
-                              <td>{record.id}</td>
-                              <td>{record.employee_id}</td>
-                              <td>{record.meal_date}</td>
-                              <td>{record.meal_type}</td>
-                              <td>{record.booking_time}</td>
-                              <td>{record.status}</td>
-                            </>
-                          )}
+                          <td>{record.id}</td>
+                          <td>{record.employee_id}</td>
+                          <td>{record.meal_date}</td>
+                          <td>{record.meal_type}</td>
+                          <td>{record.booking_time}</td>
+                          <td>{record.status}</td>
                         </tr>
                       ))}
                     </tbody>
