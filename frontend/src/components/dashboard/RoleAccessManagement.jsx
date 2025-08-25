@@ -16,8 +16,21 @@ const RoleAccessManagement = () => {
   const [messageType, setMessageType] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successDetails, setSuccessDetails] = useState({});
   const { user } = useContext(AuthContext);
   const isSuperAdmin = user?.role === 'super_admin';
+
+  // Show professional success modal for permission updates
+  const showPermissionSuccessModal = (roleData, userCount, permissionCount) => {
+    setSuccessDetails({
+      roleName: roleData?.label || 'Unknown Role',
+      userCount: userCount || 0,
+      permissionCount: permissionCount || 0,
+      timestamp: new Date().toLocaleString()
+    });
+    setShowSuccessModal(true);
+  };
 
   // Available roles (moved to state so runtime additions are possible)
   const [availableRoles, setAvailableRoles] = useState([
@@ -66,6 +79,26 @@ const RoleAccessManagement = () => {
         { id: 'read', name: 'View Divisions', description: 'View division information' },
         { id: 'update', name: 'Update Divisions', description: 'Edit division details' },
         { id: 'delete', name: 'Delete Divisions', description: 'Remove divisions' }
+      ]
+    },
+    { 
+      category: 'sections', 
+      name: 'Section Management', 
+      permissions: [
+        { id: 'create', name: 'Create Sections', description: 'Add new sections within divisions' },
+        { id: 'read', name: 'View Sections', description: 'View section information and lists' },
+        { id: 'update', name: 'Update Sections', description: 'Edit section details and assignments' },
+        { id: 'delete', name: 'Delete Sections', description: 'Remove sections from divisions' }
+      ]
+    },
+    { 
+      category: 'roles', 
+      name: 'Role & Permission Management', 
+      permissions: [
+        { id: 'create', name: 'Create Roles', description: 'Add new user roles to the system' },
+        { id: 'read', name: 'View Roles & Permissions', description: 'Access role and permission management pages' },
+        { id: 'update', name: 'Update Role Permissions', description: 'Modify permissions assigned to roles' },
+        { id: 'delete', name: 'Delete Roles', description: 'Remove roles from the system' }
       ]
     },
     { 
@@ -343,6 +376,11 @@ const RoleAccessManagement = () => {
       if (usersWithRole.length === 0) {
         // If we saved the role document, treat that as a successful save even if no users exist for the role
         if (roleSaved) {
+          const permissionCount = getTotalEnabledPermissions();
+          
+          // Show professional success modal for role permissions saved
+          showPermissionSuccessModal(selectedRoleData, 0, permissionCount);
+          
           setMessage(`Role permissions saved successfully. No users found with role ${selectedRoleData?.label}`);
           setMessageType('success');
           setToastVisible(true);
@@ -377,15 +415,19 @@ const RoleAccessManagement = () => {
 
       if (failed.length === 0) {
         setUsers(prevUsers => prevUsers.map(u => u.role === selectedRole ? { ...u, permissions: formData.permissions } : u));
+        
+        // Calculate permission count
+        const permissionCount = getTotalEnabledPermissions();
+        
+        // Show professional success modal
+        showPermissionSuccessModal(selectedRoleData, usersWithRole.length, permissionCount);
+        
+        // Also set the regular message for backup
         setMessage(`Permissions updated successfully for ${usersWithRole.length} user(s)`);
         setMessageType('success');
         setToastVisible(true);
         console.log('RoleAccessManagement: permissions updated successfully for users', usersWithRole.map(u => u._id));
-        // Fallback native alert in case toast fails to render in some environments
-        try { 
-          const details = savedRoleResponse ? `\nSaved role permissions: ${JSON.stringify(savedRoleResponse.permissions)}` : '';
-          window.alert(`Permissions updated successfully for ${usersWithRole.length} user(s)${details}`);
-        } catch (e) { /* ignore */ }
+        
         setTimeout(() => setToastVisible(false), 4000);
         // Auto-hide message area too
         setTimeout(() => { setMessage(''); setMessageType(''); }, 5000);
@@ -453,11 +495,26 @@ const RoleAccessManagement = () => {
       <div className="container-fluid px-4">
         <div className="main-card">
           <div className="card-header-custom">
-            <div className="icon-wrapper-large">
-              <i className="bi bi-shield-check"></i>
+            <div className="header-content" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <div className="header-text">
+                <div className="icon-wrapper-large">
+                  <i className="bi bi-shield-check"></i>
+                </div>
+                <h1 className="page-title">Role Access Management</h1>
+                <p className="page-subtitle">Configure permissions for user roles - changes apply to all users with the selected role</p>
+              </div>
+              
+              {isSuperAdmin && (
+                <button
+                  className="btn-professional btn-secondary"
+                  onClick={() => window.dispatchEvent(new CustomEvent('navigateTo', { detail: 'role-management' }))}
+                  title="Manage Roles"
+                  style={{ padding: '10px 16px', fontSize: '14px' }}
+                >
+                  <i className="bi bi-gear"></i> Manage Roles
+                </button>
+              )}
             </div>
-            <h1 className="page-title">Role Access Management</h1>
-            <p className="page-subtitle">Configure permissions for user roles - changes apply to all users with the selected role</p>
           </div>
           
           <div className="card-body-custom">
@@ -659,6 +716,126 @@ const RoleAccessManagement = () => {
             <div className="modal-footer">
               <button className="btn-professional btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
               <button className="btn-professional btn-success" onClick={confirmAndSave}>Yes, apply changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Professional Permission Update Success Modal */}
+      {showSuccessModal && (
+        <div className="modal-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', zIndex: 10000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ 
+            maxWidth: '600px', 
+            background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
+            border: '2px solid #28a745',
+            borderRadius: '12px',
+            boxShadow: '0 15px 35px rgba(40, 167, 69, 0.2)',
+            animation: 'fadeInUp 0.3s ease-out'
+          }}>
+            {/* Header */}
+            <div style={{ 
+              background: 'linear-gradient(135deg, #28a745, #20c997)',
+              color: 'white',
+              padding: '25px 30px',
+              borderRadius: '10px 10px 0 0',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '10px' }}>
+                <i className="bi bi-shield-check"></i>
+              </div>
+              <h2 style={{ margin: 0, fontWeight: 'bold', fontSize: '24px' }}>
+                Permission Update Completed
+              </h2>
+              <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: '14px' }}>
+                System Access Control Updated Successfully
+              </p>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '30px' }}>
+              <div style={{ 
+                background: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                borderRadius: '8px',
+                padding: '20px',
+                marginBottom: '25px'
+              }}>
+                <h4 style={{ 
+                  color: '#495057',
+                  marginBottom: '15px',
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
+                  <i className="bi bi-info-circle" style={{ color: '#28a745', marginRight: '8px' }}></i>
+                  Update Summary
+                </h4>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <div>
+                    <strong style={{ color: '#6c757d', fontSize: '14px' }}>Role Updated:</strong>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#28a745' }}>
+                      {successDetails.roleName}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <strong style={{ color: '#6c757d', fontSize: '14px' }}>Users Affected:</strong>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#28a745' }}>
+                      {successDetails.userCount} {successDetails.userCount === 1 ? 'User' : 'Users'}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <strong style={{ color: '#6c757d', fontSize: '14px' }}>Permissions Granted:</strong>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#28a745' }}>
+                      {successDetails.permissionCount} Permissions
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <strong style={{ color: '#6c757d', fontSize: '14px' }}>Updated At:</strong>
+                    <div style={{ fontSize: '14px', color: '#495057' }}>
+                      {successDetails.timestamp}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ 
+                background: '#d4edda',
+                border: '1px solid #c3e6cb',
+                borderRadius: '8px',
+                padding: '15px',
+                marginBottom: '25px'
+              }}>
+                <p style={{ 
+                  margin: 0,
+                  color: '#155724',
+                  fontSize: '14px',
+                  lineHeight: '1.5'
+                }}>
+                  <i className="bi bi-check-circle-fill" style={{ marginRight: '8px' }}></i>
+                  <strong>All permission changes have been successfully applied to the system.</strong>
+                  {successDetails.userCount > 0 && (
+                    <span> Affected users will see the updated permissions on their next login or page refresh.</span>
+                  )}
+                </p>
+              </div>
+
+              <div style={{ textAlign: 'center' }}>
+                <button 
+                  className="btn-professional btn-success"
+                  onClick={() => setShowSuccessModal(false)}
+                  style={{ 
+                    padding: '12px 40px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    minWidth: '150px'
+                  }}
+                >
+                  <i className="bi bi-check2-circle"></i> Acknowledged
+                </button>
+              </div>
             </div>
           </div>
         </div>

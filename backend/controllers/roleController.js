@@ -78,9 +78,43 @@ const updateRole = async (req, res) => {
   }
 };
 
+// @desc Delete a role
+// @route DELETE /api/roles/:id
+// @access Private (super_admin)
+const deleteRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('Attempting to delete role with ID:', id);
+    
+    const role = await Role.findById(id);
+    
+    if (!role) {
+      console.log('Role not found for ID:', id);
+      return res.status(404).json({ success: false, message: 'Role not found' });
+    }
+
+    console.log('Found role to delete:', role.value, role.label);
+
+    // Check if it's a system role that shouldn't be deleted
+    const systemRoles = ['super_admin', 'admin', 'employee', 'clerk', 'administrative_clerk'];
+    if (systemRoles.includes(role.value)) {
+      console.log('Attempted to delete system role:', role.value);
+      return res.status(400).json({ success: false, message: 'Cannot delete system roles' });
+    }
+
+    await Role.findByIdAndDelete(id);
+    console.log('Role deleted successfully:', role.value);
+    res.status(200).json({ success: true, message: 'Role deleted successfully' });
+  } catch (error) {
+    console.error('Delete role error:', error);
+    res.status(500).json({ success: false, message: 'Server error deleting role' });
+  }
+};
+
 module.exports = {
   getRoles,
   createRole,
   getRole,
-  updateRole
+  updateRole,
+  deleteRole
 };

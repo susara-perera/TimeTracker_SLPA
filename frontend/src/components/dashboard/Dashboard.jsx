@@ -6,6 +6,7 @@ import ReportGeneration from './ReportGeneration';
 import DivisionManagement from './DivisionManagement';
 import SectionManagement from './SectionManagement';
 import RoleAccessManagement from './RoleAccessManagement';
+import RoleManagement from './RoleManagement';
 import Settings from './Settings';
 import './Dashboard.css';
 
@@ -106,6 +107,8 @@ const Dashboard = () => {
         return <SectionManagement />;
       case 'roles':
         return <RoleAccessManagement />;
+      case 'role-management':
+        return <RoleManagement />;
       case 'settings':
         return <Settings />;
       default:

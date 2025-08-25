@@ -46,6 +46,27 @@ const getPermissionCatalog = async (req, res) => {
         ]
       },
       {
+        category: 'sections',
+        name: 'Section Management',
+        permissions: [
+          { id: 'create', name: 'Create Sections' },
+          { id: 'read', name: 'View Sections' },
+          { id: 'update', name: 'Update Sections' },
+          { id: 'delete', name: 'Delete Sections' }
+        ]
+      },
+      {
+        category: 'roles',
+        name: 'Role & Permission Management',
+        permissions: [
+          { id: 'create', name: 'Create Roles' },
+          { id: 'read', name: 'View Roles & Permissions' },
+          { id: 'update', name: 'Update Role Permissions' },
+          { id: 'delete', name: 'Delete Roles' },
+          { id: 'manage', name: 'Full Role Management Access' }
+        ]
+      },
+      {
         category: 'settings',
         name: 'System Settings',
         permissions: [

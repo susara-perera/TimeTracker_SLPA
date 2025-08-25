@@ -99,7 +99,19 @@ const userSchema = new mongoose.Schema({
       update: { type: Boolean, default: false },
       delete: { type: Boolean, default: false }
     },
+    sections: {
+      create: { type: Boolean, default: false },
+      read: { type: Boolean, default: false },
+      update: { type: Boolean, default: false },
+      delete: { type: Boolean, default: false }
+    },
     settings: {
+      create: { type: Boolean, default: false },
+      read: { type: Boolean, default: false },
+      update: { type: Boolean, default: false },
+      delete: { type: Boolean, default: false }
+    },
+    roles: {
       create: { type: Boolean, default: false },
       read: { type: Boolean, default: false },
       update: { type: Boolean, default: false },
