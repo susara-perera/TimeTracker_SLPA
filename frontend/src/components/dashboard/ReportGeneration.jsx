@@ -101,6 +101,15 @@ const ReportGeneration = () => {
       return;
     }
 
+    console.log('Generating report with:', {
+      reportType,
+      reportScope,
+      employeeId,
+      divisionId,
+      sectionId,
+      dateRange
+    });
+
     setLoading(true);
     setError('');
     setReportData(null);
@@ -143,6 +152,9 @@ const ReportGeneration = () => {
           endpoint = '/api/reports/mysql/attendance';
       }
 
+      console.log('Making request to:', `http://localhost:5000${endpoint}`);
+      console.log('Request data:', requestData);
+
       const token = localStorage.getItem('token');
       const response = await fetch(`http://localhost:5000${endpoint}`, {
         method: 'POST',
@@ -154,6 +166,7 @@ const ReportGeneration = () => {
       });
 
       const data = await response.json();
+      console.log('Response:', { status: response.status, data });
 
       if (response.ok && data.success) {
         setReportData(data);
@@ -365,12 +378,27 @@ const ReportGeneration = () => {
       printContent += `
             <table class="data-table">
               <thead>
-                <tr>
-                  <th style="width: 18%;">Punch Date</th>
-                  <th style="width: 12%;">Punch Time</th>
+                <tr>`;
+      
+      if (isIndividualReport) {
+        printContent += `
+                  <th style="width: 18%;">Date</th>
+                  <th style="width: 12%;">Time</th>
                   <th style="width: 10%;">Function</th>
-                  <th style="width: 20%;">Event Description</th>
-                  <th style="width: 40%;">Remarks</th>
+                  <th style="width: 20%;">Status</th>
+                  <th style="width: 40%;">Verification</th>`;
+      } else {
+        printContent += `
+                  <th style="width: 15%;">Date</th>
+                  <th style="width: 10%;">Time</th>
+                  <th style="width: 12%;">Employee ID</th>
+                  <th style="width: 18%;">Employee Name</th>
+                  <th style="width: 8%;">Function</th>
+                  <th style="width: 12%;">Status</th>
+                  <th style="width: 25%;">Verification</th>`;
+      }
+      
+      printContent += `
                 </tr>
               </thead>
               <tbody>`;
@@ -409,7 +437,7 @@ const ReportGeneration = () => {
           });
         });
       } else {
-        // Group report - group by date and show clean format
+        // Group report - group by date and show employee details
         const groupedData = {};
         reportData.data.forEach(record => {
           const dateKey = record.date_;
@@ -423,7 +451,12 @@ const ReportGeneration = () => {
         
         sortedDates.forEach(dateKey => {
           const records = groupedData[dateKey];
-          records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
+          records.sort((a, b) => {
+            // Sort by employee ID first, then by time
+            const empCompare = (a.employee_ID || '').localeCompare(b.employee_ID || '');
+            if (empCompare !== 0) return empCompare;
+            return (a.time_ || '').localeCompare(b.time_ || '');
+          });
           
           records.forEach((record, index) => {
             const isOnScan = record.scan_type?.toUpperCase() === 'IN';
@@ -443,6 +476,8 @@ const ReportGeneration = () => {
                     ${showDate ? `${formattedDate}<br/>${dayName}` : ''}
                   </td>
                   <td>${record.time_ || ''}</td>
+                  <td style="font-weight: bold; text-align: center;">${record.employee_ID || 'N/A'}</td>
+                  <td style="text-align: left; padding-left: 8px;">${record.employee_name || 'Unknown'}</td>
                   <td class="function-col">${functionCode}</td>
                   <td class="${isOnScan ? 'on-status' : 'off-status'}">${status}</td>
                   <td>Granted(ID & F) COM0002</td>
@@ -683,22 +718,53 @@ const ReportGeneration = () => {
             <div className="stats-grid">
               {reportType === 'attendance' && (
                 <>
-                  <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.total_records}</span>
-                    <span className="stat-label">Total Records</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.unique_employees}</span>
-                    <span className="stat-label">Unique Employees</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.in_scans}</span>
-                    <span className="stat-label">IN Scans</span>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.out_scans}</span>
-                    <span className="stat-label">OUT Scans</span>
-                  </div>
+                  {reportScope === 'individual' ? (
+                    <>
+                      {/* Individual Report Stats */}
+                      <div className="stat-card">
+                        <span className="stat-number">{reportData.data?.[0]?.employee_ID || 'N/A'}</span>
+                        <span className="stat-label">Employee ID</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-number">{reportData.data?.[0]?.employee_name || 'Unknown'}</span>
+                        <span className="stat-label">Employee Name</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-number">{reportData.summary.total_records}</span>
+                        <span className="stat-label">Total Records</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-number">{`${dateRange.startDate} - ${dateRange.endDate}`}</span>
+                        <span className="stat-label">Time Range</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Group Report Stats */}
+                      <div className="stat-card">
+                        <span className="stat-number">{
+                          divisionId === 'all' ? 'All Divisions' : 
+                          divisions.find(d => d.division_id === divisionId)?.division_name || `Division ID: ${divisionId}`
+                        }</span>
+                        <span className="stat-label">Division</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-number">{
+                          sectionId === 'all' ? 'All Sections' : 
+                          sections.find(s => s.section_id === sectionId)?.section_name || `Section ID: ${sectionId}`
+                        }</span>
+                        <span className="stat-label">Section</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-number">{reportData.summary.total_records}</span>
+                        <span className="stat-label">Total Records</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-number">{reportData.summary.unique_employees}</span>
+                        <span className="stat-label">Unique Employees</span>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
               
@@ -731,7 +797,7 @@ const ReportGeneration = () => {
             {/* Data Section */}
             <div className="data-section">
               <div className="data-header">
-                <h4 className="data-title">Unit Attendance Report</h4>
+                {/* <h4 className="data-title">Unit Attendance Report</h4> */}
                 <span className="record-count">{reportData.data.length} records</span>
               </div>
 
@@ -742,11 +808,24 @@ const ReportGeneration = () => {
                       <tr>
                         {reportType === 'attendance' && (
                           <>
-                            <th style={{width: '15%'}}>PUNCH DATE</th>
-                            <th style={{width: '12%'}}>PUNCH TIME</th>
-                            <th style={{width: '10%'}}>FUNCTION</th>
-                            <th style={{width: '15%'}}>EVENT DESCRIPTION</th>
-                            <th style={{width: '48%'}}>REMARKS</th>
+                            {reportScope === 'individual' ? (
+                              <>
+                                <th style={{width: '20%'}}>PUNCH DATE</th>
+                                <th style={{width: '15%'}}>PUNCH TIME</th>
+                                <th style={{width: '15%'}}>FUNCTION</th>
+                                <th style={{width: '20%'}}>EVENT DESCRIPTION</th>
+                                <th style={{width: '30%'}}>REMARKS</th>
+                              </>
+                            ) : (
+                              <>
+                                <th style={{width: '10%'}}>EMP NO</th>
+                                <th style={{width: '20%'}}>EMP NAME</th>
+                                <th style={{width: '15%'}}>PUNCH DATE</th>
+                                <th style={{width: '10%'}}>PUNCH TIME</th>
+                                <th style={{width: '10%'}}>FUNCTION</th>
+                                <th style={{width: '35%'}}>EVENT DESCRIPTION</th>
+                              </>
+                            )}
                           </>
                         )}
                         {reportType === 'meal' && (
@@ -763,57 +842,126 @@ const ReportGeneration = () => {
                     </thead>
                     <tbody>
                       {reportType === 'attendance' && (() => {
-                        // Group data by date for proper formatting
-                        const groupedData = {};
-                        reportData.data.forEach(record => {
-                          const dateKey = record.date_;
-                          if (!groupedData[dateKey]) {
-                            groupedData[dateKey] = [];
-                          }
-                          groupedData[dateKey].push(record);
-                        });
-
-                        const sortedDates = Object.keys(groupedData).sort();
-                        const rows = [];
-
-                        sortedDates.forEach(dateKey => {
-                          const records = groupedData[dateKey];
-                          // Sort records by time
-                          records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
-                          
-                          records.forEach((record, index) => {
-                            const showDate = index === 0; // Only show date on first row for each date group
-                            const date = new Date(record.date_);
-                            const day = date.getDate().toString().padStart(2, '0');
-                            const month = date.toLocaleDateString('en-GB', { month: 'short' });
-                            const year = date.getFullYear().toString().slice(-2);
-                            const weekday = date.toLocaleDateString('en-GB', { weekday: 'short' });
-                            const formattedDate = `${day}-${month}-${year}`;
-
-                            rows.push(
-                              <tr key={`${dateKey}-${index}`} className={showDate ? 'date-group-row' : 'time-row'}>
-                                <td className={showDate ? 'date-cell-with-data' : 'date-cell-empty'}>
-                                  {showDate && (
-                                    <div>
-                                      <div className="date-line">{formattedDate}</div>
-                                      <div className="weekday-line">{weekday}</div>
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="time-column">{record.time_}</td>
-                                <td className="function-column">
-                                  {record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0'}
-                                </td>
-                                <td className="event-description">
-                                  {record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'}
-                                </td>
-                                <td className="remarks-column">Granted(ID & F) COM0002</td>
-                              </tr>
-                            );
+                        if (reportScope === 'individual') {
+                          // Individual report - show by date without employee columns
+                          const groupedData = {};
+                          reportData.data.forEach(record => {
+                            const dateKey = record.date_;
+                            if (!groupedData[dateKey]) {
+                              groupedData[dateKey] = [];
+                            }
+                            groupedData[dateKey].push(record);
                           });
-                        });
 
-                        return rows;
+                          const sortedDates = Object.keys(groupedData).sort();
+                          const rows = [];
+
+                          sortedDates.forEach(dateKey => {
+                            const records = groupedData[dateKey];
+                            // Sort records by time only for individual reports
+                            records.sort((a, b) => {
+                              const aTime = String(a.time_ || '');
+                              const bTime = String(b.time_ || '');
+                              return aTime.localeCompare(bTime);
+                            });
+                            
+                            records.forEach((record, index) => {
+                              const showDate = index === 0;
+                              const date = new Date(record.date_);
+                              const day = date.getDate().toString().padStart(2, '0');
+                              const month = date.toLocaleDateString('en-GB', { month: 'short' });
+                              const year = date.getFullYear().toString().slice(-2);
+                              const weekday = date.toLocaleDateString('en-GB', { weekday: 'short' });
+                              const formattedDate = `${day}-${month}-${year}`;
+
+                              rows.push(
+                                <tr key={`${dateKey}-${index}`} className={showDate ? 'date-group-row' : 'time-row'}>
+                                  <td className={showDate ? 'date-cell-with-data' : 'date-cell-empty'}>
+                                    {showDate && (
+                                      <div>
+                                        <div className="date-line">{formattedDate}</div>
+                                        <div className="weekday-line">{weekday}</div>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="time-column">{record.time_}</td>
+                                  <td className="function-column">
+                                    {record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0'}
+                                  </td>
+                                  <td className="event-description">
+                                    {record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'}
+                                  </td>
+                                  <td className="remarks-column">Granted(ID & F) COM0002</td>
+                                </tr>
+                              );
+                            });
+                          });
+                          return rows;
+                        } else {
+                          // Group report - show with employee columns
+                          const groupedData = {};
+                          reportData.data.forEach(record => {
+                            const dateKey = record.date_;
+                            if (!groupedData[dateKey]) {
+                              groupedData[dateKey] = [];
+                            }
+                            groupedData[dateKey].push(record);
+                          });
+
+                          const sortedDates = Object.keys(groupedData).sort();
+                          const rows = [];
+
+                          sortedDates.forEach(dateKey => {
+                            const records = groupedData[dateKey];
+                            // Sort records by employee ID first, then by time
+                            records.sort((a, b) => {
+                              const aEmpId = String(a.employee_ID || a.employee_id || '');
+                              const bEmpId = String(b.employee_ID || b.employee_id || '');
+                              const empCompare = aEmpId.localeCompare(bEmpId);
+                              if (empCompare !== 0) return empCompare;
+                              const aTime = String(a.time_ || '');
+                              const bTime = String(b.time_ || '');
+                              return aTime.localeCompare(bTime);
+                            });
+                            
+                            records.forEach((record, index) => {
+                              const showDate = index === 0;
+                              const date = new Date(record.date_);
+                              const day = date.getDate().toString().padStart(2, '0');
+                              const month = date.toLocaleDateString('en-GB', { month: 'short' });
+                              const year = date.getFullYear().toString().slice(-2);
+                              const weekday = date.toLocaleDateString('en-GB', { weekday: 'short' });
+                              const formattedDate = `${day}-${month}-${year}`;
+
+                              rows.push(
+                                <tr key={`${dateKey}-${index}`} className={showDate ? 'date-group-row' : 'time-row'}>
+                                  <td className="employee-id-column" style={{fontWeight: 'bold', textAlign: 'center'}}>
+                                    {record.employee_ID || record.employee_id || 'N/A'}
+                                  </td>
+                                  <td className="employee-name-column" style={{textAlign: 'left', paddingLeft: '8px'}}>
+                                    {record.employee_name || record.name || 'Unknown'}
+                                  </td>
+                                  <td className={showDate ? 'date-cell-with-data' : 'date-cell-empty'}>
+                                    {showDate && (
+                                      <div>
+                                        <div className="date-line">{formattedDate}</div>
+                                        <div className="weekday-line">{weekday}</div>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="time-column">{record.time_}</td>
+                                  <td className="function-column">
+                                    {record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0'}
+                                  </td>
+                                  <td className="event-description" style={{textAlign: 'left', paddingLeft: '5px'}}>
+                                    {record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'}  Granted(ID & F COM0002)
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          });
+                          return rows;
+                        }
                       })()}
                       
                       {reportType === 'meal' && reportData.data.slice(0, 100).map((record, index) => (
