@@ -743,3 +743,63 @@ html {
         0 0 0 4px rgba(102, 126, 234, 0.2),
         0 8px 24px rgba(102, 126, 234, 0.15);
 }
+
+/* Disabled/Read-only styles */
+.checkbox-item.disabled {
+    background-color: #f8f9fa !important;
+    border-color: #dee2e6 !important;
+    cursor: not-allowed !important;
+    position: relative;
+}
+
+.checkbox-item.disabled:hover {
+    background-color: #f8f9fa !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.checkbox-item.disabled input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
+.checkbox-item.disabled label {
+    cursor: not-allowed !important;
+    color: #6c757d;
+}
+
+/* Add blocked cursor for all disabled interactive elements */
+input:disabled,
+button:disabled,
+select:disabled,
+.disabled,
+[style*="cursor: not-allowed"] {
+    cursor: not-allowed !important;
+}
+
+/* Override pointer cursor when disabled */
+.checkbox-item.disabled *,
+.checkbox-item.disabled input,
+.checkbox-item.disabled label {
+    cursor: not-allowed !important;
+}
+
+.permission-category .badge {
+    background-color: #6c757d;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: normal;
+}
+
+.select-all-section:has(input:disabled) {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    cursor: not-allowed;
+}
+
+/* Specific styles for blocked elements */
+.select-all-section[style*="cursor: not-allowed"] input,
+.select-all-section[style*="cursor: not-allowed"] label {
+    cursor: not-allowed !important;
+}
