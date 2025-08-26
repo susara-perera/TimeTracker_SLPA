@@ -174,6 +174,15 @@ const getMealReport = async (req, res) => {
     }
 
     // Apply additional filters
+    if (filters.divisionId) mealQuery.divisionId = filters.divisionId;
+    if (filters.sectionId) mealQuery.sectionId = filters.sectionId;
+    if (filters.employeeId) {
+      // For individual employee reports
+      const user = await User.findOne({ employeeId: filters.employeeId });
+      if (user) {
+        mealQuery.user = user._id;
+      }
+    }
     if (filters.division) userFilter.division = filters.division;
     if (filters.section) userFilter.section = filters.section;
     if (filters.users && filters.users.length > 0) {
@@ -183,12 +192,14 @@ const getMealReport = async (req, res) => {
     if (filters.location) mealQuery.location = filters.location;
     if (filters.paymentStatus) mealQuery.paymentStatus = filters.paymentStatus;
 
-    // Get filtered users
-    const users = await User.find(userFilter).select('_id');
-    const userIds = users.map(user => user._id);
-    
-    if (userIds.length > 0) {
-      mealQuery.user = { $in: userIds };
+    // Get filtered users (only if we need user-based filtering)
+    if (Object.keys(userFilter).length > 0) {
+      const users = await User.find(userFilter).select('_id');
+      const userIds = users.map(user => user._id);
+      
+      if (userIds.length > 0) {
+        mealQuery.user = { $in: userIds };
+      }
     }
 
     let reportData;
@@ -200,7 +211,11 @@ const getMealReport = async (req, res) => {
     } else if (groupBy === 'date') {
       reportData = await generateMealDateReport(mealQuery, start, end);
     } else {
-      reportData = await generateMealUserReport(mealQuery, start, end);
+      // Default: return individual meal records with user info
+      reportData = await Meal.find(mealQuery)
+        .populate('user', 'firstName lastName employeeId email')
+        .sort({ mealTime: -1 })
+        .lean();
     }
 
     // Log report generation
@@ -574,6 +589,15 @@ const generateDateReport = async (attendanceQuery, start, end) => {
     },
     { $sort: { date: 1 } }
   ]);
+};
+
+// Helper function to generate meal user report
+// Helper function to generate meal date report
+const generateMealDateReport = async (mealQuery, start, end) => {
+  return await Meal.find(mealQuery)
+    .populate('user', 'firstName lastName employeeId email')
+    .sort({ mealTime: -1 })
+    .lean();
 };
 
 // Helper function to generate meal user report

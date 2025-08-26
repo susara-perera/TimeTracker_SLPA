@@ -22,6 +22,13 @@ const ReportGeneration = () => {
   useEffect(() => {
     fetchDivisions();
     fetchAllSections();
+    
+    // Set default date range to today
+    const today = new Date().toISOString().split('T')[0];
+    setDateRange({
+      startDate: today,
+      endDate: today
+    });
   }, []);
 
   // Fetch sections when division changes
@@ -97,7 +104,7 @@ const ReportGeneration = () => {
     }
 
     if (reportScope === 'individual' && !employeeId && reportType === 'attendance') {
-      setError('Please enter Employee ID for individual reports');
+      setError(`Please enter Employee ID for individual ${reportType} reports`);
       return;
     }
 
@@ -143,7 +150,17 @@ const ReportGeneration = () => {
           endpoint = '/api/reports/mysql/attendance';
           break;
         case 'meal':
-          endpoint = '/api/reports/mysql/meal';
+          endpoint = '/api/reports/meal';
+          requestData = {
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate,
+            filters: {},
+            groupBy: 'date'
+          };
+          // Add division filter for meal reports
+          if (divisionId && divisionId !== 'all') {
+            requestData.filters.divisionId = divisionId;
+          }
           break;
         case 'audit':
           endpoint = '/api/reports/audit';
@@ -184,15 +201,30 @@ const ReportGeneration = () => {
   };
 
   const printReport = () => {
+    console.log('Print function called');
+    console.log('Report data:', reportData);
+    console.log('Report scope:', reportScope);
+    
     if (!reportData || !reportData.data) {
-      setError('No data to print');
+      console.error('No report data available for printing');
+      setError('No data to print. Please generate a report first.');
+      return;
+    }
+
+    if (!reportData.data.length) {
+      console.error('Empty report data');
+      setError('No records found to print');
       return;
     }
 
     try {
+      console.log('Starting print process...');
       // Get employee info from first record for individual reports
       const firstRecord = reportData.data[0];
       const isIndividualReport = reportScope === 'individual';
+      
+      console.log('First record:', firstRecord);
+      console.log('Is individual report:', isIndividualReport);
       
       // Group data by date for individual reports
       const groupedData = {};
@@ -347,8 +379,16 @@ const ReportGeneration = () => {
           </head>
           <body>
             <div class="report-header">
-              <div class="report-title">Unit Attendance Report</div>
-              <div class="report-subtitle">All Granted(ID & FP) Records</div>
+              <div class="report-title">${
+                reportType === 'meal' 
+                  ? (isIndividualReport ? 'Individual Meal Report' : 'Group Meal Report')
+                  : (isIndividualReport ? 'Unit Attendance Report' : 'Group Attendance Report')
+              }</div>
+              <div class="report-subtitle">${
+                reportType === 'meal' 
+                  ? 'All Meal Consumption Records'
+                  : 'All Granted(ID & FP) Records'
+              }</div>
               
               <div class="header-info">
                 <div class="left-info">`;
@@ -380,22 +420,43 @@ const ReportGeneration = () => {
               <thead>
                 <tr>`;
       
-      if (isIndividualReport) {
-        printContent += `
-                  <th style="width: 18%;">Date</th>
-                  <th style="width: 12%;">Time</th>
-                  <th style="width: 10%;">Function</th>
-                  <th style="width: 20%;">Status</th>
-                  <th style="width: 40%;">Verification</th>`;
+      if (reportType === 'meal') {
+        if (isIndividualReport) {
+          printContent += `
+                    <th style="width: 15%;">Date</th>
+                    <th style="width: 12%;">Time</th>
+                    <th style="width: 15%;">Meal Type</th>
+                    <th style="width: 18%;">Location</th>
+                    <th style="width: 10%;">Quantity</th>
+                    <th style="width: 30%;">Items</th>`;
+        } else {
+          printContent += `
+                    <th style="width: 10%;">Emp No</th>
+                    <th style="width: 15%;">Emp Name</th>
+                    <th style="width: 12%;">Date</th>
+                    <th style="width: 10%;">Time</th>
+                    <th style="width: 12%;">Meal Type</th>
+                    <th style="width: 12%;">Location</th>
+                    <th style="width: 8%;">Quantity</th>
+                    <th style="width: 21%;">Items</th>`;
+        }
       } else {
-        printContent += `
-                  <th style="width: 15%;">Date</th>
-                  <th style="width: 10%;">Time</th>
-                  <th style="width: 12%;">Employee ID</th>
-                  <th style="width: 18%;">Employee Name</th>
-                  <th style="width: 8%;">Function</th>
-                  <th style="width: 12%;">Status</th>
-                  <th style="width: 25%;">Verification</th>`;
+        if (isIndividualReport) {
+          printContent += `
+                    <th style="width: 18%;">Date</th>
+                    <th style="width: 12%;">Time</th>
+                    <th style="width: 10%;">Function</th>
+                    <th style="width: 20%;">Status</th>
+                    <th style="width: 40%;">Verification</th>`;
+        } else {
+          printContent += `
+                    <th style="width: 12%;">Emp No</th>
+                    <th style="width: 20%;">Emp Name</th>
+                    <th style="width: 15%;">Date</th>
+                    <th style="width: 10%;">Time</th>
+                    <th style="width: 8%;">Function</th>
+                    <th style="width: 35%;">Event Description</th>`;
+        }
       }
       
       printContent += `
@@ -403,26 +464,110 @@ const ReportGeneration = () => {
               </thead>
               <tbody>`;
 
-      if (isIndividualReport) {
-        // Sort dates and group data properly
-        const sortedDates = Object.keys(groupedData).sort();
-        
-        sortedDates.forEach(date => {
-          const records = groupedData[date];
-          const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
-          const day = new Date(date).getDate().toString().padStart(2, '0');
-          const month = new Date(date).toLocaleDateString('en-GB', { month: 'short' });
-          const year = new Date(date).getFullYear().toString().slice(-2);
-          const formattedDate = `${day}-${month}-${year}`;
+      if (reportType === 'meal') {
+        if (isIndividualReport) {
+          // For individual meal reports, group by date
+          const mealGroupedData = {};
+          reportData.data.forEach(record => {
+            const dateKey = record.date || record.meal_date || record.mealTime;
+            if (!mealGroupedData[dateKey]) {
+              mealGroupedData[dateKey] = [];
+            }
+            mealGroupedData[dateKey].push(record);
+          });
+
+          const sortedDates = Object.keys(mealGroupedData).sort();
           
-          // Sort records by time for each date
-          records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
+          sortedDates.forEach(date => {
+            const records = mealGroupedData[date];
+            const day = new Date(date).getDate().toString().padStart(2, '0');
+            const month = new Date(date).toLocaleDateString('en-GB', { month: 'short' });
+            const year = new Date(date).getFullYear().toString().slice(-2);
+            const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'short' });
+            const formattedDate = `${day}-${month}-${year}`;
+            
+            // Sort records by time for each date
+            records.sort((a, b) => {
+              const aTime = new Date(a.mealTime || a.meal_time).getTime();
+              const bTime = new Date(b.mealTime || b.meal_time).getTime();
+              return aTime - bTime;
+            });
+            
+            records.forEach((record, index) => {
+              const showDate = index === 0;
+              const mealTime = new Date(record.mealTime || record.meal_time).toLocaleTimeString('en-GB', { 
+                hour: '2-digit', minute: '2-digit' 
+              });
+              const items = record.items?.map(item => `${item.name} (${item.quantity})`).join(', ') || 'Standard Meal';
+              const quantity = record.items?.reduce((total, item) => total + item.quantity, 0) || 1;
+              
+              printContent += `
+                  <tr>
+                    <td class="${showDate ? 'date-cell' : 'date-cell-empty'}">
+                      ${showDate ? `${formattedDate}<br/>${dayName}` : ''}
+                    </td>
+                    <td style="text-align: center;">${mealTime}</td>
+                    <td style="text-align: center; text-transform: capitalize;">${record.mealType || record.meal_type}</td>
+                    <td style="text-align: center; text-transform: capitalize;">${record.location || 'Cafeteria'}</td>
+                    <td style="text-align: center; font-weight: bold;">${quantity}</td>
+                    <td style="font-size: 9px; padding: 3px;">${items}</td>
+                  </tr>`;
+            });
+          });
+        } else {
+          // For group meal reports, show all records with employee info
+          reportData.data.forEach((record, index) => {
+            const date = new Date(record.date || record.meal_date || record.mealTime);
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = date.toLocaleDateString('en-GB', { month: 'short' });
+            const year = date.getFullYear().toString().slice(-2);
+            const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+            const formattedDate = `${day}-${month}-${year}`;
+            
+            const mealTime = new Date(record.mealTime || record.meal_time).toLocaleTimeString('en-GB', { 
+              hour: '2-digit', minute: '2-digit' 
+            });
+            const items = record.items?.map(item => `${item.name} (${item.quantity})`).join(', ') || 'Standard Meal';
+            const quantity = record.items?.reduce((total, item) => total + item.quantity, 0) || 1;
+            const empName = record.user?.firstName && record.user?.lastName 
+              ? `${record.user.firstName} ${record.user.lastName}`
+              : record.employee_name || 'Unknown';
+            
+            printContent += `
+                <tr>
+                  <td style="font-weight: bold; text-align: center;">${record.user?.employeeId || record.employee_id || 'N/A'}</td>
+                  <td style="text-align: left; padding-left: 8px;">${empName}</td>
+                  <td style="text-align: center;">${formattedDate}<br/>${dayName}</td>
+                  <td style="text-align: center;">${mealTime}</td>
+                  <td style="text-align: center; text-transform: capitalize;">${record.mealType || record.meal_type}</td>
+                  <td style="text-align: center; text-transform: capitalize;">${record.location || 'Cafeteria'}</td>
+                  <td style="text-align: center; font-weight: bold;">${quantity}</td>
+                  <td style="font-size: 9px; padding: 3px;">${items}</td>
+                </tr>`;
+          });
+        }
+      } else {
+        // Attendance report logic
+        if (isIndividualReport) {
+          // Sort dates and group data properly
+          const sortedDates = Object.keys(groupedData).sort();
           
-          records.forEach((record, index) => {
-            const isOnScan = record.scan_type?.toUpperCase() === 'IN';
-            const functionCode = isOnScan ? 'F1-0' : 'F4-0';
-            const status = isOnScan ? 'ON' : 'OFF';
-            const showDate = index === 0; // Only show date on first row for each date group
+          sortedDates.forEach(date => {
+            const records = groupedData[date];
+            const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
+            const day = new Date(date).getDate().toString().padStart(2, '0');
+            const month = new Date(date).toLocaleDateString('en-GB', { month: 'short' });
+            const year = new Date(date).getFullYear().toString().slice(-2);
+            const formattedDate = `${day}-${month}-${year}`;
+            
+            // Sort records by time for each date
+            records.sort((a, b) => (a.time_ || '').localeCompare(b.time_ || ''));
+            
+            records.forEach((record, index) => {
+              const isOnScan = record.scan_type?.toUpperCase() === 'IN';
+              const functionCode = isOnScan ? 'F1-0' : 'F4-0';
+              const status = isOnScan ? 'ON' : 'OFF';
+              const showDate = index === 0; // Only show date on first row for each date group
             
             printContent += `
                 <tr>
@@ -453,9 +598,13 @@ const ReportGeneration = () => {
           const records = groupedData[dateKey];
           records.sort((a, b) => {
             // Sort by employee ID first, then by time
-            const empCompare = (a.employee_ID || '').localeCompare(b.employee_ID || '');
+            const aEmpId = String(a.employee_ID || a.employee_id || '');
+            const bEmpId = String(b.employee_ID || b.employee_id || '');
+            const empCompare = aEmpId.localeCompare(bEmpId);
             if (empCompare !== 0) return empCompare;
-            return (a.time_ || '').localeCompare(b.time_ || '');
+            const aTime = String(a.time_ || '');
+            const bTime = String(b.time_ || '');
+            return aTime.localeCompare(bTime);
           });
           
           records.forEach((record, index) => {
@@ -472,19 +621,19 @@ const ReportGeneration = () => {
             
             printContent += `
                 <tr>
+                  <td style="font-weight: bold; text-align: center;">${record.employee_ID || record.employee_id || 'N/A'}</td>
+                  <td style="text-align: left; padding-left: 8px;">${record.employee_name || record.name || 'Unknown'}</td>
                   <td class="${showDate ? 'date-cell' : 'date-cell-empty'}">
                     ${showDate ? `${formattedDate}<br/>${dayName}` : ''}
                   </td>
                   <td>${record.time_ || ''}</td>
-                  <td style="font-weight: bold; text-align: center;">${record.employee_ID || 'N/A'}</td>
-                  <td style="text-align: left; padding-left: 8px;">${record.employee_name || 'Unknown'}</td>
                   <td class="function-col">${functionCode}</td>
-                  <td class="${isOnScan ? 'on-status' : 'off-status'}">${status}</td>
-                  <td>Granted(ID & F) COM0002</td>
+                  <td style="text-align: left; padding-left: 5px;">${status} Granted(ID & F COM0002)</td>
                 </tr>`;
           });
         });
-      }
+        } // End of attendance group report
+      } // End of attendance report logic
 
       printContent += `
               </tbody>
@@ -511,20 +660,39 @@ const ReportGeneration = () => {
           </body>
         </html>`;
 
+      console.log('Print content prepared, opening print window...');
+      
       // Open print window
       const printWindow = window.open('', '_blank');
+      
+      if (!printWindow) {
+        throw new Error('Could not open print window. Please check if popup blocker is enabled.');
+      }
+      
+      console.log('Print window opened successfully');
+      
       printWindow.document.write(printContent);
       printWindow.document.close();
       
+      console.log('Content written to print window');
+      
       // Wait for content to load then print
       setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
+        try {
+          printWindow.print();
+          printWindow.close();
+          console.log('Print dialog opened successfully');
+          setError(''); // Clear any previous errors
+        } catch (printErr) {
+          console.error('Error during print:', printErr);
+          printWindow.close();
+          throw new Error('Failed to open print dialog');
+        }
       }, 250);
 
     } catch (err) {
       console.error('Print error:', err);
-      setError('Failed to print report');
+      setError(`Failed to print report: ${err.message}`);
     }
   };
 
@@ -563,9 +731,28 @@ const ReportGeneration = () => {
                 <option value="meal">🍽️ Meal Report</option>
                 <option value="audit">🔍 Audit Report</option>
               </select>
+              {reportType === 'meal' && (
+                <div className="field-help" style={{
+                  marginTop: '0.5rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#e8f4fd',
+                  border: '1px solid #bee5eb',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  color: '#0c5460'
+                }}>
+                  <strong>🍽️ Meal Report Instructions:</strong>
+                  <ul style={{ margin: '0.5rem 0 0 0', paddingLeft: '1.2rem' }}>
+                    <li>Choose a <strong>Division</strong> to filter meals by department (or select "All Divisions")</li>
+                    <li>Pick a <strong>Date Range</strong> to analyze meal consumption patterns</li>
+                    <li>Use <strong>Quick Date Selection</strong> buttons for common date ranges</li>
+                    <li>Report shows all meal bookings with employee details and meal information</li>
+                  </ul>
+                </div>
+              )}
             </div>
 
-            {(reportType === 'attendance' || reportType === 'meal') && (
+            {(reportType === 'attendance' || reportType === 'audit') && (
               <div className="form-field">
                 <label className="field-label">Report Scope</label>
                 <select 
@@ -579,7 +766,25 @@ const ReportGeneration = () => {
               </div>
             )}
 
-            {reportScope === 'group' && reportType === 'attendance' && (
+            {reportType === 'meal' && (
+              <div className="form-field">
+                <label className="field-label">Division Filter</label>
+                <select 
+                  className="field-input"
+                  value={divisionId}
+                  onChange={(e) => setDivisionId(e.target.value)}
+                >
+                  <option value="all">🏢 All Divisions</option>
+                  {divisions.map((division) => (
+                    <option key={division.division_id} value={division.division_id}>
+                      📋 {division.division_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {reportScope === 'group' && (reportType === 'attendance') && (
               <>
                 <div className="form-field">
                   <label className="field-label">Division Filter</label>
@@ -615,7 +820,7 @@ const ReportGeneration = () => {
               </>
             )}
 
-            {reportScope === 'individual' && (reportType === 'attendance' || reportType === 'meal') && (
+            {reportScope === 'individual' && (reportType === 'attendance') && (
               <div className="form-field">
                 <label className="field-label">Employee ID</label>
                 <input 
@@ -646,6 +851,66 @@ const ReportGeneration = () => {
                   value={dateRange.endDate}
                   onChange={(e) => setDateRange({...dateRange, endDate: e.target.value})}
                 />
+              </div>
+            </div>
+
+            {/* Quick Date Selectors */}
+            <div className="form-field">
+              <label className="field-label">Quick Date Selection</label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button 
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setDateRange({ startDate: today, endDate: today });
+                  }}
+                >
+                  📅 Today
+                </button>
+                <button 
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => {
+                    const today = new Date();
+                    const yesterday = new Date(today);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    setDateRange({ startDate: yesterdayStr, endDate: yesterdayStr });
+                  }}
+                >
+                  📆 Yesterday
+                </button>
+                <button 
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => {
+                    const today = new Date();
+                    const weekAgo = new Date(today);
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    setDateRange({ 
+                      startDate: weekAgo.toISOString().split('T')[0], 
+                      endDate: today.toISOString().split('T')[0] 
+                    });
+                  }}
+                >
+                  📊 Last 7 Days
+                </button>
+                <button 
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => {
+                    const today = new Date();
+                    const monthAgo = new Date(today);
+                    monthAgo.setDate(monthAgo.getDate() - 30);
+                    setDateRange({ 
+                      startDate: monthAgo.toISOString().split('T')[0], 
+                      endDate: today.toISOString().split('T')[0] 
+                    });
+                  }}
+                >
+                  📈 Last 30 Days
+                </button>
               </div>
             </div>
           </div>
@@ -701,13 +966,23 @@ const ReportGeneration = () => {
               <h3 className="results-title">
                 <i className="bi bi-clipboard-data"></i>
                 Report Results
-                {reportScope === 'group' && reportType === 'attendance' && (
+                {(reportScope === 'group' && reportType === 'attendance') && (
                   <span className="filter-info">
                     {reportData.summary?.division_filter && (
                       <span className="division-info"> - {reportData.summary.division_filter}</span>
                     )}
                     {reportData.summary?.section_filter && (
                       <span className="section-info"> - {reportData.summary.section_filter}</span>
+                    )}
+                  </span>
+                )}
+                {reportType === 'meal' && (
+                  <span className="filter-info">
+                    {/* Show selected division for meal reports */}
+                    {divisionId !== 'all' && (
+                      <span className="division-info"> - {
+                        divisions.find(d => d.division_id === divisionId)?.division_name || `Division ID: ${divisionId}`
+                      }</span>
                     )}
                   </span>
                 )}
@@ -770,26 +1045,61 @@ const ReportGeneration = () => {
               
               {reportType === 'meal' && (
                 <>
+                  {/* Meal Report Stats */}
                   <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.total_bookings}</span>
-                    <span className="stat-label">Total Bookings</span>
+                    <span className="stat-number">{reportData.data?.length || 0}</span>
+                    <span className="stat-label">Total Meals</span>
                   </div>
                   <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.unique_employees}</span>
+                    <span className="stat-number">
+                      {reportData.data ? 
+                        new Set(reportData.data.map(meal => 
+                          meal.user?.employeeId || meal.employee_id
+                        )).size : 0}
+                    </span>
                     <span className="stat-label">Unique Employees</span>
                   </div>
                   <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.breakfast_bookings}</span>
+                    <span className="stat-number">
+                      {reportData.data?.filter(meal => 
+                        (meal.mealType || meal.meal_type) === 'breakfast'
+                      ).length || 0}
+                    </span>
                     <span className="stat-label">Breakfast</span>
                   </div>
                   <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.lunch_bookings}</span>
+                    <span className="stat-number">
+                      {reportData.data?.filter(meal => 
+                        (meal.mealType || meal.meal_type) === 'lunch'
+                      ).length || 0}
+                    </span>
                     <span className="stat-label">Lunch</span>
                   </div>
                   <div className="stat-card">
-                    <span className="stat-number">{reportData.summary.dinner_bookings}</span>
+                    <span className="stat-number">
+                      {reportData.data?.filter(meal => 
+                        (meal.mealType || meal.meal_type) === 'dinner'
+                      ).length || 0}
+                    </span>
                     <span className="stat-label">Dinner</span>
                   </div>
+                  <div className="stat-card">
+                    <span className="stat-number">
+                      {reportData.data?.filter(meal => 
+                        (meal.mealType || meal.meal_type) === 'snack'
+                      ).length || 0}
+                    </span>
+                    <span className="stat-label">Snacks</span>
+                  </div>
+                  {/* Additional stats for filtered reports */}
+                  {divisionId !== 'all' && (
+                    <div className="stat-card" style={{background: 'linear-gradient(135deg, #e17055 0%, #fdcb6e 100%)'}}>
+                      <span className="stat-number" style={{fontSize: '0.9rem'}}>
+                        {divisions.find(d => d.division_id === divisionId)?.division_name || 'Selected Division'}
+                      </span>
+                      <span className="stat-label">Division Filter</span>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -830,12 +1140,14 @@ const ReportGeneration = () => {
                         )}
                         {reportType === 'meal' && (
                           <>
-                            <th style={{width: '8%'}}>ID</th>
-                            <th style={{width: '12%'}}>EMPLOYEE ID</th>
-                            <th style={{width: '15%'}}>MEAL DATE</th>
-                            <th style={{width: '15%'}}>MEAL TYPE</th>
-                            <th style={{width: '15%'}}>BOOKING TIME</th>
-                            <th style={{width: '10%'}}>STATUS</th>
+                            <th style={{width: '10%'}}>EMP NO</th>
+                            <th style={{width: '15%'}}>EMP NAME</th>
+                            <th style={{width: '12%'}}>MEAL DATE</th>
+                            <th style={{width: '10%'}}>MEAL TIME</th>
+                            <th style={{width: '12%'}}>MEAL TYPE</th>
+                            <th style={{width: '12%'}}>LOCATION</th>
+                            <th style={{width: '8%'}}>QUANTITY</th>
+                            <th style={{width: '21%'}}>ITEMS</th>
                           </>
                         )}
                       </tr>
@@ -964,16 +1276,51 @@ const ReportGeneration = () => {
                         }
                       })()}
                       
-                      {reportType === 'meal' && reportData.data.slice(0, 100).map((record, index) => (
-                        <tr key={index}>
-                          <td>{record.id}</td>
-                          <td>{record.employee_id}</td>
-                          <td>{record.meal_date}</td>
-                          <td>{record.meal_type}</td>
-                          <td>{record.booking_time}</td>
-                          <td>{record.status}</td>
-                        </tr>
-                      ))}
+                      {reportType === 'meal' && (() => {
+                        // Meal report - show with employee columns
+                        const rows = [];
+                        reportData.data.forEach((record, index) => {
+                          const date = new Date(record.date || record.meal_date || record.mealTime);
+                          const day = date.getDate().toString().padStart(2, '0');
+                          const month = date.toLocaleDateString('en-GB', { month: 'short' });
+                          const year = date.getFullYear().toString().slice(-2);
+                          const formattedDate = `${day}-${month}-${year}`;
+
+                          rows.push(
+                            <tr key={index}>
+                              <td className="employee-id-column" style={{fontWeight: 'bold', textAlign: 'center'}}>
+                                {record.user?.employeeId || record.employee_id || 'N/A'}
+                              </td>
+                              <td className="employee-name-column" style={{textAlign: 'left', paddingLeft: '8px'}}>
+                                {record.user?.firstName && record.user?.lastName 
+                                  ? `${record.user.firstName} ${record.user.lastName}`
+                                  : record.employee_name || 'Unknown'}
+                              </td>
+                              <td className="date-cell" style={{textAlign: 'center'}}>
+                                {formattedDate}
+                              </td>
+                              <td className="time-column" style={{textAlign: 'center'}}>
+                                {new Date(record.mealTime || record.meal_time).toLocaleTimeString('en-GB', { 
+                                  hour: '2-digit', minute: '2-digit' 
+                                })}
+                              </td>
+                              <td className="meal-type-column" style={{textAlign: 'center', textTransform: 'capitalize'}}>
+                                {record.mealType || record.meal_type}
+                              </td>
+                              <td className="location-column" style={{textAlign: 'center', textTransform: 'capitalize'}}>
+                                {record.location || 'Cafeteria'}
+                              </td>
+                              <td className="quantity-column" style={{textAlign: 'center', fontWeight: 'bold'}}>
+                                {record.items?.reduce((total, item) => total + item.quantity, 0) || 1}
+                              </td>
+                              <td className="items-column" style={{fontSize: '0.8rem'}}>
+                                {record.items?.map(item => `${item.name} (${item.quantity})`).join(', ') || 'Standard Meal'}
+                              </td>
+                            </tr>
+                          );
+                        });
+                        return rows;
+                      })()}
                     </tbody>
                   </table>
                   

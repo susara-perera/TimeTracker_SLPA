@@ -166,6 +166,28 @@ const mealSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: [500, 'Remarks cannot exceed 500 characters']
+  },
+  // Division and Section information for reporting
+  divisionId: {
+    type: String,
+    trim: true
+  },
+  divisionName: {
+    type: String,
+    trim: true
+  },
+  sectionId: {
+    type: String,
+    trim: true
+  },
+  sectionName: {
+    type: String,
+    trim: true
+  },
+  specialRequirements: {
+    type: String,
+    trim: true,
+    maxlength: [1000, 'Special requirements cannot exceed 1000 characters']
   }
 }, {
   timestamps: true,

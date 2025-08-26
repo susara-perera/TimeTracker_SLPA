@@ -516,6 +516,76 @@
   margin: 0;
 }
 
+/* Meal Report Specific Styling */
+.meal-type-column {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+  padding: 0.5rem !important;
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.location-column {
+  font-weight: 500;
+  color: #374151;
+  text-align: center;
+  padding: 0.5rem !important;
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.quantity-column {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: center;
+  padding: 0.5rem !important;
+  margin: 0;
+}
+
+.items-column {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #64748b;
+  padding: 0.5rem !important;
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* Meal Type Badges */
+.meal-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-block;
+  text-align: center;
+}
+
+.meal-badge-breakfast {
+  background: linear-gradient(135deg, #fdcb6e 0%, #e17055 100%);
+  color: white;
+}
+
+.meal-badge-lunch {
+  background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+  color: white;
+}
+
+.meal-badge-dinner {
+  background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+  color: white;
+}
+
+.meal-badge-snack {
+  background: linear-gradient(135deg, #fd79a8 0%, #e84393 100%);
+  color: white;
+}
+
 .status-column {
   text-align: center;
 }

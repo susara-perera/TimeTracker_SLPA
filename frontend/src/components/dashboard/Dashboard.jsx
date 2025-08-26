@@ -3,6 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import DashboardStats from './DashboardStats';
 import UserManagement from './UserManagement';
 import ReportGeneration from './ReportGeneration';
+import MealManagement from './MealManagement';
 import DivisionManagement from './DivisionManagement';
 import SectionManagement from './SectionManagement';
 import RoleAccessManagement from './RoleAccessManagement';
@@ -33,6 +34,9 @@ const Dashboard = () => {
         break;
       case 'reports':
         setActiveSection('reports');
+        break;
+      case 'meals':
+        setActiveSection('meals');
         break;
       case 'divisions':
         setActiveSection('divisions');
@@ -88,6 +92,8 @@ const Dashboard = () => {
       case 'audit-report':
       case 'meal-report':
         return <ReportGeneration />;
+      case 'meals':
+        return <MealManagement />;
       case 'divisions':
         return <DivisionManagement />;
       case 'sections':
@@ -121,6 +127,13 @@ const Dashboard = () => {
       label: 'Report Generation',
       icon: 'bi-graph-up',
       color: 'info',
+      roles: ['super_admin', 'admin', 'clerk', 'administrative_clerk']
+    },
+    {
+      id: 'meals',
+      label: 'Meal Management',
+      icon: 'bi-cup-hot',
+      color: 'orange',
       roles: ['super_admin', 'admin', 'clerk', 'administrative_clerk']
     },
     {
