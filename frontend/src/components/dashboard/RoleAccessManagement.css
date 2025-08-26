@@ -749,7 +749,6 @@ html {
     background-color: #f8f9fa !important;
     border-color: #dee2e6 !important;
     cursor: not-allowed !important;
-    position: relative;
 }
 
 .checkbox-item.disabled:hover {
@@ -763,24 +762,8 @@ html {
 }
 
 .checkbox-item.disabled label {
-    cursor: not-allowed !important;
+    cursor: not-allowed;
     color: #6c757d;
-}
-
-/* Add blocked cursor for all disabled interactive elements */
-input:disabled,
-button:disabled,
-select:disabled,
-.disabled,
-[style*="cursor: not-allowed"] {
-    cursor: not-allowed !important;
-}
-
-/* Override pointer cursor when disabled */
-.checkbox-item.disabled *,
-.checkbox-item.disabled input,
-.checkbox-item.disabled label {
-    cursor: not-allowed !important;
 }
 
 .permission-category .badge {
@@ -798,8 +781,65 @@ select:disabled,
     cursor: not-allowed;
 }
 
-/* Specific styles for blocked elements */
-.select-all-section[style*="cursor: not-allowed"] input,
-.select-all-section[style*="cursor: not-allowed"] label {
+/* Blocked button styles */
+.btn-blocked {
+    cursor: not-allowed !important;
+    opacity: 0.65;
+    pointer-events: none;
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    color: #fff !important;
+}
+
+.btn-blocked:hover {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    color: #fff !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn-blocked i {
+    color: #fff !important;
+}
+
+/* Tooltip for blocked buttons */
+.tooltip-blocked {
+    position: relative;
+}
+
+.tooltip-blocked:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: white;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 5px;
+}
+
+.tooltip-blocked:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #333;
+    z-index: 1000;
+}
+
+/* Specific blocked cursor for manage roles button */
+.manage-roles-blocked {
+    cursor: not-allowed !important;
+}
+
+.manage-roles-blocked:hover {
     cursor: not-allowed !important;
 }

@@ -20,6 +20,27 @@ const RoleManagement = () => {
 
   const isSuperAdmin = user?.role === 'super_admin';
 
+  // Add permission check functions for rolesManage
+  const hasRoleManageReadPermission = () => {
+    if (isSuperAdmin) return true;
+    return user?.permissions?.rolesManage?.read === true;
+  };
+
+  const hasRoleManageCreatePermission = () => {
+    if (isSuperAdmin) return true;
+    return user?.permissions?.rolesManage?.create === true;
+  };
+
+  const hasRoleManageUpdatePermission = () => {
+    if (isSuperAdmin) return true;
+    return user?.permissions?.rolesManage?.update === true;
+  };
+
+  const hasRoleManageDeletePermission = () => {
+    if (isSuperAdmin) return true;
+    return user?.permissions?.rolesManage?.delete === true;
+  };
+
   // Show success modal with message
   const showSuccessPopup = (message) => {
     setSuccessMessage(message);
@@ -297,15 +318,36 @@ const RoleManagement = () => {
                 <p className="page-subtitle">Create, edit, and manage user roles in the system</p>
               </div>
               
-              {isSuperAdmin && (
+              {hasRoleManageReadPermission() ? (
                 <button
-                  className="btn-professional btn-primary"
-                  onClick={() => setShowAddRoleModal(true)}
-                  title="Add New Role"
-                  style={{ padding: '10px 16px', fontSize: '14px' }}
+                  className={`btn-professional ${hasRoleManageCreatePermission() ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => {
+                    if (hasRoleManageCreatePermission()) {
+                      setShowAddRoleModal(true);
+                    } else {
+                      setMessage('You do not have permission to create roles. Contact a Super Admin for "rolesManage.create" access.');
+                      setMessageType('error');
+                      setToastVisible(true);
+                      setTimeout(() => setToastVisible(false), 4000);
+                    }
+                  }}
+                  title={hasRoleManageCreatePermission() ? "Add New Role" : "You need 'rolesManage.create' permission to add roles"}
+                  style={{ 
+                    padding: '10px 16px', 
+                    fontSize: '14px',
+                    cursor: hasRoleManageCreatePermission() ? 'pointer' : 'not-allowed',
+                    opacity: hasRoleManageCreatePermission() ? 1 : 0.6
+                  }}
                 >
-                  <i className="bi bi-plus-circle"></i> Add Role
+                  <i className={`bi ${hasRoleManageCreatePermission() ? 'bi-plus-circle' : 'bi-lock'}`}></i> 
+                  Add Role
+                  {!hasRoleManageCreatePermission() && <i className="bi bi-exclamation-triangle ml-1" style={{fontSize: '12px'}}></i>}
                 </button>
+              ) : (
+                <div className="alert alert-info" style={{ margin: 0, padding: '8px 12px', fontSize: '14px' }}>
+                  <i className="bi bi-info-circle mr-2"></i>
+                  You have limited access to role management.
+                </div>
               )}
             </div>
           </div>
@@ -319,14 +361,25 @@ const RoleManagement = () => {
               </div>
             )}
 
-            {!isSuperAdmin && (
+            {/* Access Control Messages */}
+            {!hasRoleManageReadPermission() && (
               <div className="alert alert-warning">
-                <i className="bi bi-exclamation-triangle"></i>
-                You do not have permission to manage roles. Contact a Super Admin for changes.
+                <i className="bi bi-lock-fill mr-2"></i>
+                You do not have permission to view role management. Contact a Super Admin for "rolesManage.read" access.
               </div>
             )}
 
-            {/* Roles Table */}
+            {hasRoleManageReadPermission() && !hasRoleManageCreatePermission() && !hasRoleManageUpdatePermission() && !hasRoleManageDeletePermission() && (
+              <div className="alert alert-info">
+                <i className="bi bi-eye mr-2"></i>
+                You have read-only access to role management. Contact a Super Admin for additional permissions.
+              </div>
+            )}
+
+            {/* Show content only if user has read access */}
+            {hasRoleManageReadPermission() && (
+              <>
+                {/* Roles Table */}
             <div className="professional-card">
               <div className="table-responsive">
                 <table className="professional-table">
@@ -352,32 +405,65 @@ const RoleManagement = () => {
                           <td><code>{role.value}</code></td>
                           <td>{new Date(role.createdAt || Date.now()).toLocaleDateString()}</td>
                           <td>
-                            {isSuperAdmin ? (
+                            {hasRoleManageReadPermission() ? (
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <button
-                                  className="btn-professional btn-secondary"
-                                  onClick={() => openEditModal(role)}
-                                  title="Edit Role"
-                                  style={{ padding: '6px 10px', fontSize: '12px' }}
+                                  className={`btn-professional ${hasRoleManageUpdatePermission() ? 'btn-secondary' : 'btn-secondary'}`}
+                                  onClick={() => {
+                                    if (hasRoleManageUpdatePermission()) {
+                                      openEditModal(role);
+                                    } else {
+                                      setMessage('You do not have permission to edit roles. Contact a Super Admin for "rolesManage.update" access.');
+                                      setMessageType('error');
+                                      setToastVisible(true);
+                                      setTimeout(() => setToastVisible(false), 4000);
+                                    }
+                                  }}
+                                  title={hasRoleManageUpdatePermission() ? "Edit Role" : "You need 'rolesManage.update' permission to edit roles"}
+                                  style={{ 
+                                    padding: '6px 10px', 
+                                    fontSize: '12px',
+                                    cursor: hasRoleManageUpdatePermission() ? 'pointer' : 'not-allowed',
+                                    opacity: hasRoleManageUpdatePermission() ? 1 : 0.6
+                                  }}
                                 >
-                                  <i className="bi bi-pencil"></i> Edit
+                                  <i className={`bi ${hasRoleManageUpdatePermission() ? 'bi-pencil' : 'bi-lock'}`}></i> 
+                                  Edit
+                                  {!hasRoleManageUpdatePermission() && <i className="bi bi-exclamation-triangle ml-1" style={{fontSize: '10px'}}></i>}
                                 </button>
                                 <button
-                                  className="btn-professional btn-danger"
+                                  className={`btn-professional ${hasRoleManageDeletePermission() ? 'btn-danger' : 'btn-secondary'}`}
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    console.log('Delete button clicked for role:', role);
-                                    openDeleteConfirm(role);
+                                    if (hasRoleManageDeletePermission()) {
+                                      console.log('Delete button clicked for role:', role);
+                                      openDeleteConfirm(role);
+                                    } else {
+                                      setMessage('You do not have permission to delete roles. Contact a Super Admin for "rolesManage.delete" access.');
+                                      setMessageType('error');
+                                      setToastVisible(true);
+                                      setTimeout(() => setToastVisible(false), 4000);
+                                    }
                                   }}
-                                  title="Delete Role"
-                                  style={{ padding: '6px 10px', fontSize: '12px' }}
+                                  title={hasRoleManageDeletePermission() ? "Delete Role" : "You need 'rolesManage.delete' permission to delete roles"}
+                                  style={{ 
+                                    padding: '6px 10px', 
+                                    fontSize: '12px',
+                                    cursor: hasRoleManageDeletePermission() ? 'pointer' : 'not-allowed',
+                                    opacity: hasRoleManageDeletePermission() ? 1 : 0.6
+                                  }}
                                 >
-                                  <i className="bi bi-trash"></i> Delete
+                                  <i className={`bi ${hasRoleManageDeletePermission() ? 'bi-trash' : 'bi-lock'}`}></i> 
+                                  Delete
+                                  {!hasRoleManageDeletePermission() && <i className="bi bi-exclamation-triangle ml-1" style={{fontSize: '10px'}}></i>}
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-muted">No access</span>
+                              <span className="text-muted">
+                                <i className="bi bi-lock mr-1"></i>
+                                No access
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -387,6 +473,8 @@ const RoleManagement = () => {
                 </table>
               </div>
             </div>
+              </>
+            )}
           </div>
         </div>
       </div>

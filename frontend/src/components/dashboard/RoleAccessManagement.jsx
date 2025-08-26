@@ -33,6 +33,12 @@ const RoleAccessManagement = () => {
     return user?.permissions?.roles?.update === true;
   };
 
+  // Add function to check if user has rolesManage.read permission
+  const hasRoleManageReadPermission = () => {
+    if (isSuperAdmin) return true; // Super admin always has access
+    return user?.permissions?.rolesManage?.read === true;
+  };
+
   // Show professional success modal for permission updates
   const showPermissionSuccessModal = (roleData, userCount, permissionCount) => {
     setSuccessDetails({
@@ -530,11 +536,28 @@ const RoleAccessManagement = () => {
               {hasRoleReadPermission() && (
                 <button
                   className="btn-professional btn-secondary"
-                  onClick={() => window.dispatchEvent(new CustomEvent('navigateTo', { detail: 'role-management' }))}
-                  title="Manage Roles"
-                  style={{ padding: '10px 16px', fontSize: '14px' }}
+                  onClick={() => {
+                    if (hasRoleManageReadPermission()) {
+                      window.dispatchEvent(new CustomEvent('navigateTo', { detail: 'role-management' }));
+                    } else {
+                      // Show error message when no rolesManage.read permission
+                      setMessage('You do not have permission to access Role Management. Contact a Super Admin for access.');
+                      setMessageType('error');
+                      setToastVisible(true);
+                      setTimeout(() => setToastVisible(false), 4000);
+                    }
+                  }}
+                  title={hasRoleManageReadPermission() ? "Manage Roles" : "You need 'rolesManage.read' permission to access Role Management"}
+                  style={{ 
+                    padding: '10px 16px', 
+                    fontSize: '14px',
+                    cursor: hasRoleManageReadPermission() ? 'pointer' : 'not-allowed',
+                    opacity: hasRoleManageReadPermission() ? 1 : 0.7
+                  }}
                 >
-                  <i className="bi bi-gear"></i> Manage Roles
+                  <i className={`bi ${hasRoleManageReadPermission() ? 'bi-gear' : 'bi-lock'}`}></i> 
+                  Manage Roles
+                  {!hasRoleManageReadPermission() && <i className="bi bi-exclamation-triangle ml-1" style={{fontSize: '12px'}}></i>}
                 </button>
               )}
             </div>
@@ -603,8 +626,8 @@ const RoleAccessManagement = () => {
                 className="form-control form-control-modern" 
                 value={selectedRole}
                 onChange={handleRoleSelect}
-                disabled={!hasRoleReadPermission()}
-                title={!hasRoleReadPermission() ? 'You need "View Roles & Permissions" access to select roles' : ''}
+                disabled={!hasRoleUpdatePermission()}
+                title={!hasRoleUpdatePermission() ? 'You need "Update Role Permissions" access to change role selection' : ''}
               >
                 <option value="">-- Choose a role to configure --</option>
                 {availableRoles.map(role => (
@@ -620,7 +643,7 @@ const RoleAccessManagement = () => {
                 </small>
               )}
 
-              {!isSuperAdmin && !hasRoleUpdatePermission() && (
+              {!hasRoleUpdatePermission() && (
                 <div className="alert alert-warning mt-3">
                   <i className="bi bi-lock-fill mr-2"></i>
                   You have view-only access. To modify role permissions, you need the "Update Role Permissions" access.
@@ -643,23 +666,16 @@ const RoleAccessManagement = () => {
                   </div>
 
                   {/* Select All Section */}
-                  <div className="select-all-section" style={{ 
-                    opacity: hasRoleUpdatePermission() ? 1 : 0.6,
-                    cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'default'
-                  }}>
+                  <div className="select-all-section" style={{ opacity: hasRoleUpdatePermission() ? 1 : 0.6 }}>
                     <input 
                       type="checkbox" 
                       id="select-all"
                       checked={selectAll}
                       onChange={handleSelectAll}
-                      disabled={!isSuperAdmin && !hasRoleUpdatePermission()}
-                      style={{ cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'pointer' }}
+                      disabled={!hasRoleUpdatePermission()}
                     />
-                    <label htmlFor="select-all" style={{ cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'pointer' }}>
+                    <label htmlFor="select-all">
                       <i className="bi bi-check2-all mr-2"></i>Select All Permissions
-                      {!isSuperAdmin && !hasRoleUpdatePermission() && (
-                        <i className="bi bi-lock-fill ml-2" style={{ color: '#dc3545', fontSize: '12px' }}></i>
-                      )}
                     </label>
                     <span className="permission-counter">
                       {getTotalEnabledPermissions()}/{getTotalAvailablePermissions()} permissions selected
@@ -668,13 +684,11 @@ const RoleAccessManagement = () => {
 
                   {/* Permissions Grid by Category */}
                   {availablePermissions.map(category => (
-                    <div key={category.category} className="permission-category" style={{ 
-                      opacity: hasRoleUpdatePermission() ? 1 : 0.6 
-                    }}>
+                    <div key={category.category} className="permission-category" style={{ opacity: hasRoleUpdatePermission() ? 1 : 0.6 }}>
                       <h4 className="category-title">
                         <i className="bi bi-folder text-primary mr-2"></i>
                         {category.name}
-                        {!isSuperAdmin && !hasRoleUpdatePermission() && (
+                        {!hasRoleUpdatePermission() && (
                           <span className="badge badge-secondary ml-2" style={{ fontSize: '10px' }}>
                             <i className="bi bi-eye"></i> View Only
                           </span>
@@ -686,10 +700,10 @@ const RoleAccessManagement = () => {
                           return (
                             <div 
                               key={`${category.category}_${permission.id}`} 
-                              className={`checkbox-item ${isChecked ? 'selected' : ''} ${!isSuperAdmin && !hasRoleUpdatePermission() ? 'disabled' : ''}`}
-                              onClick={() => (isSuperAdmin || hasRoleUpdatePermission()) && handlePermissionChange(category.category, permission.id)}
+                              className={`checkbox-item ${isChecked ? 'selected' : ''} ${!hasRoleUpdatePermission() ? 'disabled' : ''}`}
+                              onClick={() => hasRoleUpdatePermission() && handlePermissionChange(category.category, permission.id)}
                               style={{ 
-                                cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'pointer',
+                                cursor: hasRoleUpdatePermission() ? 'pointer' : 'not-allowed',
                                 opacity: hasRoleUpdatePermission() ? 1 : 0.7
                               }}
                             >
@@ -698,19 +712,13 @@ const RoleAccessManagement = () => {
                                 checked={isChecked || false}
                                 onChange={() => handlePermissionChange(category.category, permission.id)}
                                 id={`perm_${category.category}_${permission.id}`}
-                                disabled={!isSuperAdmin && !hasRoleUpdatePermission()}
-                                style={{ cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'pointer' }}
+                                disabled={!hasRoleUpdatePermission()}
                               />
                               <span className="checkmark"></span>
-                              <label htmlFor={`perm_${category.category}_${permission.id}`} style={{ 
-                                cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'pointer' 
-                              }}>
+                              <label htmlFor={`perm_${category.category}_${permission.id}`}>
                                 <div className="permission-title">
                                   <i className="bi bi-file-text text-muted mr-2"></i>
                                   {permission.name}
-                                  {!isSuperAdmin && !hasRoleUpdatePermission() && (
-                                    <i className="bi bi-lock-fill ml-2" style={{ color: '#dc3545', fontSize: '11px' }}></i>
-                                  )}
                                 </div>
                                 <div className="permission-description">
                                   {permission.description}
@@ -728,12 +736,9 @@ const RoleAccessManagement = () => {
                     <button 
                       type="submit" 
                       className="btn-save-modern"
-                      disabled={submitting || (!isSuperAdmin && !hasRoleUpdatePermission())}
-                      title={!isSuperAdmin && !hasRoleUpdatePermission() ? 'You need "Update Role Permissions" access to apply changes' : ''}
+                      disabled={submitting || !hasRoleUpdatePermission()}
+                      title={!hasRoleUpdatePermission() ? 'You need "Update Role Permissions" access to apply changes' : ''}
                       onClick={openConfirm}
-                      style={{ 
-                        cursor: !isSuperAdmin && !hasRoleUpdatePermission() ? 'not-allowed' : 'pointer' 
-                      }}
                     >
                       {submitting ? (
                         <>

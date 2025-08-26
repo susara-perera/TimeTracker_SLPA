@@ -252,7 +252,8 @@ const createUser = async (req, res) => {
         divisions: { create: false, read: true, update: false, delete: false },
         sections: { create: true, read: true, update: true, delete: false },
         settings: { create: false, read: true, update: false, delete: false },
-        roles: { create: false, read: true, update: false, delete: false }
+        roles: { create: false, read: true, update: false, delete: false },
+        rolesManage: { create: false, read: true, update: false, delete: false }
       };
     } else if (role === 'clerk') {
       userPermissions = {
@@ -262,7 +263,8 @@ const createUser = async (req, res) => {
         divisions: { create: false, read: true, update: false, delete: false },
         sections: { create: false, read: true, update: false, delete: false },
         settings: { create: false, read: false, update: false, delete: false },
-        roles: { create: false, read: false, update: false, delete: false }
+        roles: { create: false, read: false, update: false, delete: false },
+        rolesManage: { create: false, read: false, update: false, delete: false }
       };
     } else if (role === 'administrative_clerk') {
       userPermissions = {
@@ -272,7 +274,8 @@ const createUser = async (req, res) => {
         divisions: { create: false, read: true, update: false, delete: false },
         sections: { create: false, read: true, update: true, delete: false },
         settings: { create: false, read: true, update: false, delete: false },
-        roles: { create: false, read: true, update: false, delete: false }
+        roles: { create: false, read: true, update: false, delete: false },
+        rolesManage: { create: false, read: true, update: false, delete: false }
       };
     } else if (role === 'super_admin') {
       userPermissions = {
@@ -282,7 +285,8 @@ const createUser = async (req, res) => {
         divisions: { create: true, read: true, update: true, delete: true },
         sections: { create: true, read: true, update: true, delete: true },
         settings: { create: true, read: true, update: true, delete: true },
-        roles: { create: true, read: true, update: true, delete: true }
+        roles: { create: true, read: true, update: true, delete: true },
+        rolesManage: { create: true, read: true, update: true, delete: true }
       };
     } else {
       // employee permissions
@@ -293,7 +297,8 @@ const createUser = async (req, res) => {
         divisions: { create: false, read: false, update: false, delete: false },
         sections: { create: false, read: false, update: false, delete: false },
         settings: { create: false, read: false, update: false, delete: false },
-        roles: { create: false, read: false, update: false, delete: false }
+        roles: { create: false, read: false, update: false, delete: false },
+        rolesManage: { create: false, read: false, update: false, delete: false }
       };
     }
 
