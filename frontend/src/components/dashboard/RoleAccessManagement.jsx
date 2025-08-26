@@ -95,10 +95,20 @@ const RoleAccessManagement = () => {
       category: 'roles', 
       name: 'Role & Permission Management', 
       permissions: [
-        { id: 'create', name: 'Create Roles', description: 'Add new user roles to the system' },
+       
         { id: 'read', name: 'View Roles & Permissions', description: 'Access role and permission management pages' },
         { id: 'update', name: 'Update Role Permissions', description: 'Modify permissions assigned to roles' },
-        { id: 'delete', name: 'Delete Roles', description: 'Remove roles from the system' }
+        
+      ]
+    },
+     { 
+      category: 'rolesManage', 
+      name: 'Roles Management', 
+      permissions: [
+        { id: 'create', name: 'Create Roles', description: 'Add new user roles to the system' },
+        { id: 'read', name: 'View Roles & Permissions', description: 'Access roles and permissions management pages' },
+        { id: 'update', name: 'Update Role Permissions', description: 'Modify roles' },
+        { id: 'delete', name: 'Delete Roles', description: 'Remove roles ' }
       ]
     },
     { 
