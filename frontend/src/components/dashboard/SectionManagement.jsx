@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import usePermission from '../../hooks/usePermission';
 
 const SectionManagement = () => {
   const [sections, setSections] = useState([]);
@@ -13,6 +14,10 @@ const SectionManagement = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const canView = usePermission('sections', 'read');
+  const canCreate = usePermission('sections', 'create');
+  const canUpdate = usePermission('sections', 'update');
+  const canDelete = usePermission('sections', 'delete');
 
   // Fetch sections and divisions
   const fetchData = async () => {
@@ -175,6 +180,12 @@ const SectionManagement = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Front-end permission safeguard
+    if (!canCreate && !canUpdate) {
+      alert('You do not have permission to perform this action.');
+      return;
+    }
+
     const errors = validateForm();
     
     if (Object.keys(errors).length > 0) {
@@ -398,6 +409,21 @@ const SectionManagement = () => {
     );
   }
 
+    if (!canView) {
+      return (
+        <div className="section-management">
+          <div className="section-header">
+            <h2><i className="bi bi-diagram-3"></i> Section Management</h2>
+          </div>
+          <div className="professional-card">
+            <div className="no-data">
+              <p>You do not have permission to view sections. Contact a Super Admin for access.</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
   return (
     <div className="section-management">
       {/* Professional Section Header */}
@@ -405,7 +431,10 @@ const SectionManagement = () => {
         <h2><i className="bi bi-diagram-3"></i> Section Management</h2>
         <button 
           className="btn-professional btn-primary"
-          onClick={handleAdd}
+          onClick={canCreate ? handleAdd : undefined}
+          disabled={!canCreate}
+          title={!canCreate ? 'You do not have permission to add sections' : 'Add Section'}
+          style={{ cursor: canCreate ? 'pointer' : 'not-allowed' }}
         >
           <i className="bi bi-plus-circle"></i> Add Section
         </button>
@@ -445,17 +474,19 @@ const SectionManagement = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button 
                         className="btn-professional btn-primary"
-                        onClick={() => handleEdit(section)}
-                        title="Edit Section"
-                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                        onClick={canUpdate ? () => handleEdit(section) : undefined}
+                        title={!canUpdate ? 'No permission to edit sections' : 'Edit Section'}
+                        disabled={!canUpdate}
+                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canUpdate ? 'pointer' : 'not-allowed' }}
                       >
                         <i className="bi bi-pencil"></i>
                       </button>
                       <button 
                         className="btn-professional btn-danger"
-                        onClick={() => handleDelete(section)}
-                        title="Delete Section"
-                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                        onClick={canDelete ? () => handleDelete(section) : undefined}
+                        title={!canDelete ? 'No permission to delete sections' : 'Delete Section'}
+                        disabled={!canDelete}
+                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canDelete ? 'pointer' : 'not-allowed' }}
                       >
                         <i className="bi bi-trash"></i>
                       </button>
@@ -539,7 +570,9 @@ const SectionManagement = () => {
                 <button 
                   type="submit"
                   className="btn-professional btn-success"
-                  disabled={submitting}
+                  disabled={submitting || (!canCreate && !canUpdate)}
+                  aria-disabled={submitting || (!canCreate && !canUpdate)}
+                  title={!canCreate && !canUpdate ? 'You do not have permission to perform this action' : ''}
                 >
                   <i className={`bi ${currentSection ? "bi-check-circle" : "bi-plus-circle"}`}></i>
                   {submitting ? (

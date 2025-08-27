@@ -1,32 +1,29 @@
 const mongoose = require('mongoose');
-require('dotenv').config();
+const User = require('./models/User');
 
-async function checkUser() {
+async function checkUsers() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('Connected to MongoDB');
+    await mongoose.connect('mongodb://localhost:27017/timetracker');
+    console.log('✓ Connected to database');
     
-    const User = require('./models/User');
-    
-    const users = await User.find({}, 'email employeeId firstName lastName isActive isLocked loginAttempts lockUntil');
-    console.log('Users in database:');
+    const users = await User.find({}, 'email role firstName lastName');
+    console.log('\n👥 Users in database:');
     users.forEach(user => {
-      console.log({
-        email: user.email,
-        employeeId: user.employeeId,
-        name: user.firstName + ' ' + user.lastName,
-        isActive: user.isActive,
-        isLocked: user.isLocked,
-        loginAttempts: user.loginAttempts,
-        lockUntil: user.lockUntil
-      });
+      console.log(`  - ${user.firstName} ${user.lastName}`);
+      console.log(`    Email: ${user.email}`);
+      console.log(`    Role: ${user.role}`);
+      console.log('');
     });
     
-    process.exit(0);
+    if (users.length === 0) {
+      console.log('No users found in database');
+    }
+    
   } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
+    console.error('❌ Error:', error);
+  } finally {
+    mongoose.connection.close();
   }
 }
 
-checkUser();
+checkUsers();

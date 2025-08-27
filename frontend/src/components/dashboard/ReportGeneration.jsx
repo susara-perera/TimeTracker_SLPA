@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import usePermission from '../../hooks/usePermission';
 import './ReportGeneration.css';
 
 const ReportGeneration = () => {
@@ -17,6 +18,10 @@ const ReportGeneration = () => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState('');
+
+  // permission checks
+  const canGenerate = usePermission('reports', 'create');
+  const canView = usePermission('reports', 'read');
 
   // Fetch divisions and sections on component mount
   useEffect(() => {
@@ -198,6 +203,99 @@ const ReportGeneration = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportReport = (format) => {
+    console.log('Export function called with format:', format);
+    console.log('Report data:', reportData);
+    console.log('Report scope:', reportScope);
+    
+    if (!reportData || !reportData.data) {
+      console.error('No report data available for export');
+      setError('No data to export. Please generate a report first.');
+      return;
+    }
+
+    if (!reportData.data.length) {
+      console.error('Empty report data');
+      setError('No records found to export');
+      return;
+    }
+
+    try {
+      if (format === 'csv') {
+        exportToCSV();
+      } else if (format === 'json') {
+        exportToJSON();
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      setError('Error occurred while exporting data');
+    }
+  };
+
+  const exportToCSV = () => {
+    const headers = getCSVHeaders();
+    const rows = reportData.data.map(record => getCSVRow(record));
+    
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(field => `"${field}"`).join(','))
+      .join('\n');
+    
+    downloadFile(csvContent, `${reportType}_report_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+  };
+
+  const exportToJSON = () => {
+    const jsonData = {
+      reportType,
+      reportScope,
+      dateRange,
+      generatedAt: new Date().toISOString(),
+      summary: reportData.summary,
+      data: reportData.data
+    };
+    
+    downloadFile(JSON.stringify(jsonData, null, 2), `${reportType}_report_${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+  };
+
+  const getCSVHeaders = () => {
+    if (reportType === 'meal') {
+      return reportScope === 'individual' 
+        ? ['Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items']
+        : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items'];
+    } else {
+      return reportScope === 'individual'
+        ? ['Date', 'Time', 'Scan Type', 'Status']
+        : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Scan Type', 'Status'];
+    }
+  };
+
+  const getCSVRow = (record) => {
+    if (reportType === 'meal') {
+      const items = record.items?.map(item => `${item.name} (${item.quantity})`).join('; ') || 'Standard Meal';
+      const quantity = record.items?.reduce((total, item) => total + item.quantity, 0) || 1;
+      const mealTime = new Date(record.mealTime || record.meal_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      
+      return reportScope === 'individual'
+        ? [record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items]
+        : [record.employee_id || record.user?.employeeId, record.employee_name || `${record.user?.firstName} ${record.user?.lastName}`, record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items];
+    } else {
+      return reportScope === 'individual'
+        ? [record.date_, record.time_, record.scan_type, record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF']
+        : [record.employee_ID, record.employee_name, record.date_, record.time_, record.scan_type, record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'];
+    }
+  };
+
+  const downloadFile = (content, filename, contentType) => {
+    const blob = new Blob([content], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   const printReport = () => {
@@ -915,7 +1013,15 @@ const ReportGeneration = () => {
             </div>
           </div>
 
-          <div className="action-section">
+            <div className="action-section">
+            {/* Permission banner: inform user which report actions are disabled */}
+            {(!canGenerate || !canView) && (
+              <div className="permission-banner">
+                { !canGenerate && <span className="banner-item">You do not have permission to generate reports.</span> }
+                { !canView && <span className="banner-item">You do not have permission to view/export reports.</span> }
+                <span className="banner-help">Contact a Super Admin for access.</span>
+              </div>
+            )}
             <div>
               {error && (
                 <div className="error-message">
@@ -929,19 +1035,31 @@ const ReportGeneration = () => {
               {reportData && (
                 <div className="export-actions">
                   <button 
-                    className="export-btn print"
-                    onClick={printReport}
+                    className="export-btn csv"
+                    onClick={() => { if (!canView) { setError('You do not have permission to export reports.'); return; } exportReport('csv'); }}
+                    disabled={!canView}
+                    title={!canView ? 'No permission to export' : 'Export CSV'}
                   >
-                    <i className="bi bi-printer"></i>
-                    Print Report
+                    <i className="bi bi-filetype-csv"></i>
+                    Export CSV
+                  </button>
+                  <button 
+                    className="export-btn json"
+                    onClick={() => { if (!canView) { setError('You do not have permission to export reports.'); return; } exportReport('json'); }}
+                    disabled={!canView}
+                    title={!canView ? 'No permission to export' : 'Export JSON'}
+                  >
+                    <i className="bi bi-filetype-json"></i>
+                    Export JSON
                   </button>
                 </div>
               )}
               
               <button 
                 className="generate-btn"
-                onClick={generateReport}
-                disabled={loading}
+                onClick={() => { if (!canGenerate) { setError('You do not have permission to generate reports.'); return; } generateReport(); }}
+                disabled={loading || !canGenerate}
+                title={!canGenerate ? 'No permission to generate reports' : 'Generate Report'}
               >
                 {loading ? (
                   <>

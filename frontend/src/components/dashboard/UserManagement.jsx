@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import usePermission from '../../hooks/usePermission';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -18,6 +19,10 @@ const UserManagement = () => {
   });
   const [divisions, setDivisions] = useState([]);
   const [sections, setSections] = useState([]);
+  const canViewUsers = usePermission('users', 'read');
+  const canCreateUser = usePermission('users', 'create');
+  const canUpdateUser = usePermission('users', 'update');
+  const canDeleteUser = usePermission('users', 'delete');
 
   // Helper function to get division name by ID
   const getDivisionName = (divisionId) => {
@@ -185,6 +190,11 @@ const UserManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Enforce front-end permission check as a safeguard
+    if (!canCreateUser && !editingUser) {
+      alert('You do not have permission to create users.');
+      return;
+    }
     
     // Check if passwords match when adding a new user
     if (!editingUser && formData.password !== formData.confirmPassword) {
@@ -310,17 +320,37 @@ const UserManagement = () => {
     );
   }
 
+  if (!canViewUsers) {
+    return (
+      <div className="user-management">
+        <div className="section-header">
+          <h2><i className="bi bi-people"></i> User Management</h2>
+        </div>
+        <div className="professional-card">
+          <div className="no-data">
+            <p>You do not have permission to view users. Contact a Super Admin for access.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="user-management">
       {/* Professional Section Header */}
       <div className="section-header">
         <h2><i className="bi bi-people"></i> User Management</h2>
-        <button 
-          className="btn-professional btn-primary"
-          onClick={handleAddUser}
-        >
-          <i className="bi bi-plus-circle"></i> Add User
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button 
+            className="btn-professional btn-primary"
+            onClick={canCreateUser ? handleAddUser : undefined}
+            title={!canCreateUser ? 'You do not have permission to add users' : 'Add User'}
+            disabled={!canCreateUser}
+            style={{ cursor: canCreateUser ? 'pointer' : 'not-allowed' }}
+          >
+            <i className="bi bi-plus-circle"></i> Add User
+          </button>
+        </div>
       </div>
 
       {/* Professional Users Table */}
@@ -361,17 +391,19 @@ const UserManagement = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button 
                         className="btn-professional btn-primary"
-                        onClick={() => handleEditUser(user)}
-                        title="Edit User"
-                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                        onClick={canUpdateUser ? () => handleEditUser(user) : undefined}
+                        title={!canUpdateUser ? 'No permission to edit users' : 'Edit User'}
+                        disabled={!canUpdateUser}
+                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canUpdateUser ? 'pointer' : 'not-allowed' }}
                       >
                         <i className="bi bi-pencil"></i>
                       </button>
                       <button 
                         className="btn-professional btn-danger"
-                        onClick={() => handleDeleteUser(user.id)}
-                        title="Delete User"
-                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                        onClick={canDeleteUser ? () => handleDeleteUser(user.id) : undefined}
+                        title={!canDeleteUser ? 'No permission to delete users' : 'Delete User'}
+                        disabled={!canDeleteUser}
+                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canDeleteUser ? 'pointer' : 'not-allowed' }}
                       >
                         <i className="bi bi-trash"></i>
                       </button>
@@ -555,9 +587,12 @@ const UserManagement = () => {
                 <button 
                   type="submit"
                   className="btn-professional btn-success"
+                  disabled={!canCreateUser && !editingUser}
+                  aria-disabled={!canCreateUser && !editingUser}
+                  title={!canCreateUser && !editingUser ? 'You do not have permission to add users' : ''}
                 >
                   <i className="bi bi-check-circle"></i>
-                  {editingUser ? 'Update User' : 'Add User'}
+                  {editingUser ? 'Update User' : (canCreateUser ? 'Add User' : 'No permission')}
                 </button>
               </div>
             </form>

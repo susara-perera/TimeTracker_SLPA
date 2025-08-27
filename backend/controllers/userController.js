@@ -182,9 +182,10 @@ const createUser = async (req, res) => {
       });
     }
 
-    // Validate role
-    const validRoles = ['super_admin', 'admin', 'clerk', 'administrative_clerk', 'employee'];
-    if (!validRoles.includes(role)) {
+    // Validate role against stored roles
+    const Role = require('../models/Role');
+    const roleExists = await Role.findOne({ value: role });
+    if (!roleExists) {
       return res.status(400).json({
         success: false,
         message: 'Invalid role specified'
@@ -249,7 +250,10 @@ const createUser = async (req, res) => {
         attendance: { create: true, read: true, update: true, delete: false },
         reports: { create: true, read: true, update: false, delete: false },
         divisions: { create: false, read: true, update: false, delete: false },
-        settings: { create: false, read: true, update: false, delete: false }
+        sections: { create: true, read: true, update: true, delete: false },
+        settings: { create: false, read: true, update: false, delete: false },
+        roles: { create: false, read: true, update: false, delete: false },
+        rolesManage: { create: false, read: true, update: false, delete: false }
       };
     } else if (role === 'clerk') {
       userPermissions = {
@@ -257,7 +261,10 @@ const createUser = async (req, res) => {
         attendance: { create: true, read: true, update: true, delete: false },
         reports: { create: true, read: true, update: false, delete: false },
         divisions: { create: false, read: true, update: false, delete: false },
-        settings: { create: false, read: false, update: false, delete: false }
+        sections: { create: false, read: true, update: false, delete: false },
+        settings: { create: false, read: false, update: false, delete: false },
+        roles: { create: false, read: false, update: false, delete: false },
+        rolesManage: { create: false, read: false, update: false, delete: false }
       };
     } else if (role === 'administrative_clerk') {
       userPermissions = {
@@ -265,7 +272,10 @@ const createUser = async (req, res) => {
         attendance: { create: true, read: true, update: true, delete: false },
         reports: { create: true, read: true, update: false, delete: false },
         divisions: { create: false, read: true, update: false, delete: false },
-        settings: { create: false, read: true, update: false, delete: false }
+        sections: { create: false, read: true, update: true, delete: false },
+        settings: { create: false, read: true, update: false, delete: false },
+        roles: { create: false, read: true, update: false, delete: false },
+        rolesManage: { create: false, read: true, update: false, delete: false }
       };
     } else if (role === 'super_admin') {
       userPermissions = {
@@ -273,7 +283,10 @@ const createUser = async (req, res) => {
         attendance: { create: true, read: true, update: true, delete: true },
         reports: { create: true, read: true, update: true, delete: true },
         divisions: { create: true, read: true, update: true, delete: true },
-        settings: { create: true, read: true, update: true, delete: true }
+        sections: { create: true, read: true, update: true, delete: true },
+        settings: { create: true, read: true, update: true, delete: true },
+        roles: { create: true, read: true, update: true, delete: true },
+        rolesManage: { create: true, read: true, update: true, delete: true }
       };
     } else {
       // employee permissions
@@ -282,7 +295,10 @@ const createUser = async (req, res) => {
         attendance: { create: true, read: true, update: false, delete: false },
         reports: { create: false, read: false, update: false, delete: false },
         divisions: { create: false, read: false, update: false, delete: false },
-        settings: { create: false, read: false, update: false, delete: false }
+        sections: { create: false, read: false, update: false, delete: false },
+        settings: { create: false, read: false, update: false, delete: false },
+        roles: { create: false, read: false, update: false, delete: false },
+        rolesManage: { create: false, read: false, update: false, delete: false }
       };
     }
 

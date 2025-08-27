@@ -7,6 +7,7 @@ import MealManagement from './MealManagement';
 import DivisionManagement from './DivisionManagement';
 import SectionManagement from './SectionManagement';
 import RoleAccessManagement from './RoleAccessManagement';
+import RoleManagement from './RoleManagement';
 import Settings from './Settings';
 import Footer from './Footer';
 import './Dashboard.css';
@@ -81,6 +82,19 @@ const Dashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Listen for external navigation events (e.g., from other components)
+  React.useEffect(() => {
+    const handler = (e) => {
+      const target = e?.detail;
+      if (typeof target === 'string') {
+        setActiveSection(target);
+      }
+    };
+
+    window.addEventListener('navigateTo', handler);
+    return () => window.removeEventListener('navigateTo', handler);
+  }, []);
+
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'dashboard':
@@ -100,6 +114,8 @@ const Dashboard = () => {
         return <SectionManagement />;
       case 'roles':
         return <RoleAccessManagement />;
+      case 'role-management':
+        return <RoleManagement />;
       case 'settings':
         return <Settings />;
       default:

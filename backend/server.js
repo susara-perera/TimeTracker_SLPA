@@ -17,6 +17,32 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
+// Seed default roles if missing
+const seedRoles = async () => {
+  try {
+    const Role = require('./models/Role');
+    const defaultRoles = [
+      { value: 'super_admin', label: 'Super Admin', description: 'Highest level system administrator' },
+      { value: 'admin', label: 'Administrator', description: 'System administrator with management rights' },
+      { value: 'administrative_clerk', label: 'Administrative Clerk', description: 'Administrative support staff' },
+      { value: 'clerk', label: 'Clerk', description: 'General office clerk' },
+      { value: 'employee', label: 'Employee', description: 'Regular system user' }
+    ];
+
+    for (const r of defaultRoles) {
+      await Role.findOneAndUpdate(
+        { value: r.value },
+        { $set: { label: r.label, description: r.description || '', name: r.label } },
+        { upsert: true, new: true }
+      );
+    }
+  } catch (err) {
+    console.error('Error seeding roles:', err);
+  }
+};
+
+seedRoles();
+
 // Test MySQL connection for reports
 testMySQLConnection().then(success => {
   if (success) {
@@ -127,6 +153,8 @@ app.use('/api/meals', require('./routes/meal'));
 app.use('/api/reports', require('./routes/report'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/mysql', require('./routes/mysql'));
+app.use('/api/roles', require('./routes/role'));
+app.use('/api/permissions', require('./routes/permission'));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
