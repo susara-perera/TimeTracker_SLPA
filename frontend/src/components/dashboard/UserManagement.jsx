@@ -26,14 +26,24 @@ const UserManagement = () => {
 
   // Helper function to get division name by ID
   const getDivisionName = (divisionId) => {
-    const division = divisions.find(div => (div._id || div.id) === divisionId);
-    return division ? division.name : 'N/A';
+    if (!divisionId) return 'N/A';
+    const division = divisions.find(div => 
+      (div._id || div.id) === divisionId || 
+      div._id === divisionId || 
+      div.id === divisionId
+    );
+    return division ? (division.name || 'Unknown Division') : 'N/A';
   };
 
   // Helper function to get section name by ID
   const getSectionName = (sectionId) => {
-    const section = sections.find(sec => (sec._id || sec.id) === sectionId);
-    return section ? section.name : 'N/A';
+    if (!sectionId) return 'N/A';
+    const section = sections.find(sec => 
+      (sec._id || sec.id) === sectionId || 
+      sec._id === sectionId || 
+      sec.id === sectionId
+    );
+    return section ? (section.name || 'Unknown Section') : 'N/A';
   };
 
   useEffect(() => {
@@ -53,23 +63,35 @@ const UserManagement = () => {
           
           if (usersResponse.ok) {
             const usersData = await usersResponse.json();
+            console.log('Users API Response:', usersData); // Debug log
+            
+            // Handle the response structure properly
+            const users = usersData.data || usersData || [];
+            
             // Map the data to match frontend structure
-            const mappedUsers = usersData.data.map(user => ({
-              id: user._id,
-              firstName: user.firstName,
-              lastName: user.lastName,
-              email: user.email,
-              role: user.role,
-              employeeId: user.employeeId,
-              status: user.isActive ? 'active' : 'inactive',
-              division: user.division?._id || user.division,
-              section: user.section?._id || user.section,
-              divisionName: user.division?.name,
-              sectionName: user.section?.name
-            }));
+            const mappedUsers = users.map(user => {
+              console.log('Mapping user:', user); // Debug log
+              return {
+                id: user._id || user.id,
+                firstName: user.firstName || '',
+                lastName: user.lastName || '',
+                email: user.email || '',
+                role: user.role || 'employee',
+                employeeId: user.employeeId || '',
+                status: user.isActive !== false ? 'active' : 'inactive',
+                division: user.division?._id || user.division || '',
+                section: user.section?._id || user.section || '',
+                divisionName: user.division?.name || 'N/A',
+                sectionName: user.section?.name || 'N/A'
+              };
+            });
+            
+            console.log('Mapped users:', mappedUsers); // Debug log
             setUsers(mappedUsers);
           } else {
-            console.error('Failed to fetch users');
+            console.error('Failed to fetch users, status:', usersResponse.status);
+            const errorText = await usersResponse.text();
+            console.error('Error response:', errorText);
             setUsers([]);
           }
         } catch (userError) {
@@ -88,9 +110,16 @@ const UserManagement = () => {
           
           if (divisionsResponse.ok) {
             const divisionsData = await divisionsResponse.json();
-            setDivisions(divisionsData.data || []);
+            console.log('Divisions API Response:', divisionsData); // Debug log
+            
+            // Handle different response structures
+            const divisions = divisionsData.data || divisionsData || [];
+            console.log('Divisions array:', divisions); // Debug log
+            setDivisions(divisions);
           } else {
-            console.error('Failed to fetch divisions');
+            console.error('Failed to fetch divisions, status:', divisionsResponse.status);
+            const errorText = await divisionsResponse.text();
+            console.error('Divisions error response:', errorText);
             setDivisions([]);
           }
         } catch (divisionError) {
@@ -109,9 +138,16 @@ const UserManagement = () => {
           
           if (sectionsResponse.ok) {
             const sectionsData = await sectionsResponse.json();
-            setSections(sectionsData.data || []);
+            console.log('Sections API Response:', sectionsData); // Debug log
+            
+            // Handle different response structures
+            const sections = sectionsData.data || sectionsData || [];
+            console.log('Sections array:', sections); // Debug log
+            setSections(sections);
           } else {
-            console.error('Failed to fetch sections');
+            console.error('Failed to fetch sections, status:', sectionsResponse.status);
+            const errorText = await sectionsResponse.text();
+            console.error('Sections error response:', errorText);
             setSections([]);
           }
         } catch (sectionError) {

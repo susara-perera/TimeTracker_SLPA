@@ -3,7 +3,7 @@ const User = require('./models/User');
 
 async function checkUsers() {
   try {
-    await mongoose.connect('mongodb://localhost:27017/timetracker');
+    await mongoose.connect('mongodb://localhost:27017/slpa_attendance');
     console.log('✓ Connected to database');
     
     const users = await User.find({}, 'email role firstName lastName');
