@@ -10,7 +10,7 @@ const getDivisions = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 50, // Increased limit to get more data
+      limit = req.query.limit ? parseInt(req.query.limit) : 1000, // Increased default limit to 1000
       sort = 'name',
       order = 'asc',
       search,

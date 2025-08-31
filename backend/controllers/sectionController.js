@@ -11,7 +11,7 @@ const getSections = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = req.query.limit ? parseInt(req.query.limit) : 1000, // Increased default limit to 1000
       sort = '-createdAt',
       division,
       status,

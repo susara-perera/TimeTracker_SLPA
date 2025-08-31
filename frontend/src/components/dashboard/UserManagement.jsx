@@ -101,7 +101,7 @@ const UserManagement = () => {
         
         // Fetch divisions from database
         try {
-          const divisionsResponse = await fetch('http://localhost:5000/api/divisions', {
+          const divisionsResponse = await fetch('http://localhost:5000/api/divisions?limit=1000', {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
@@ -129,7 +129,7 @@ const UserManagement = () => {
 
         // Fetch sections from database
         try {
-          const sectionsResponse = await fetch('http://localhost:5000/api/sections', {
+          const sectionsResponse = await fetch('http://localhost:5000/api/sections?limit=1000', {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
@@ -416,8 +416,8 @@ const UserManagement = () => {
                       {user.role.replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
-                  <td>{getDivisionName(user.division)}</td>
-                  <td>{getSectionName(user.section)}</td>
+                  <td>{user.divisionName || (user.division?.name) || getDivisionName(user.division) || 'N/A'}</td>
+                  <td>{user.sectionName || (user.section?.name) || getSectionName(user.section) || 'N/A'}</td>
                   <td>
                     <span className={`status-badge status-${user.status}`}>
                       {user.status.toUpperCase()}
