@@ -184,6 +184,9 @@ const RoleManagement = () => {
         setMessageType('success');
         setToastVisible(true);
         setTimeout(() => setToastVisible(false), 4000);
+        
+        // Notify other components
+        window.dispatchEvent(new CustomEvent('roleUpdated', { detail: { value: updatedRole.value, label: updatedRole.label } }));
       } else {
         const error = await res.json().catch(() => ({}));
         setMessage(error.message || 'Failed to update role');
@@ -247,6 +250,9 @@ const RoleManagement = () => {
         setMessageType('success');
         setToastVisible(true);
         setTimeout(() => setToastVisible(false), 4000);
+        
+        // Notify other components
+        window.dispatchEvent(new CustomEvent('roleDeleted', { detail: { value: roleToDelete.value, label: roleToDelete.label } }));
       } else {
         const errorText = await res.text();
         console.error('Delete failed with response:', errorText);
@@ -262,6 +268,7 @@ const RoleManagement = () => {
         setMessageType('error');
         setToastVisible(true);
         setTimeout(() => setToastVisible(false), 4000);
+        setShowDeleteConfirm(false);
       }
     } catch (err) {
       console.error('Error deleting role:', err);
@@ -269,6 +276,7 @@ const RoleManagement = () => {
       setMessageType('error');
       setToastVisible(true);
       setTimeout(() => setToastVisible(false), 4000);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -311,11 +319,7 @@ const RoleManagement = () => {
           <div className="card-header-custom">
             <div className="header-content" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
               <div className="header-text">
-                <div className="icon-wrapper-large">
-                  <i className="bi bi-people-fill"></i>
-                </div>
-                <h1 className="page-title">Role Management</h1>
-                <p className="page-subtitle">Create, edit, and manage user roles in the system</p>
+                <h1 className="page-title role-title-black">Role Management</h1>
               </div>
               
               {hasRoleManageReadPermission() ? (
@@ -367,9 +371,7 @@ const RoleManagement = () => {
                 <i className="bi bi-lock-fill mr-2"></i>
                 You do not have permission to view role management. Contact a Super Admin for "rolesManage.read" access.
               </div>
-            )}
-
-            {hasRoleManageReadPermission() && !hasRoleManageCreatePermission() && !hasRoleManageUpdatePermission() && !hasRoleManageDeletePermission() && (
+            )}            {hasRoleManageReadPermission() && !hasRoleManageCreatePermission() && !hasRoleManageUpdatePermission() && !hasRoleManageDeletePermission() && (
               <div className="alert alert-info">
                 <i className="bi bi-eye mr-2"></i>
                 You have read-only access to role management. Contact a Super Admin for additional permissions.

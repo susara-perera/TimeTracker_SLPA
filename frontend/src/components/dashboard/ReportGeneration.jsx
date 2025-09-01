@@ -57,10 +57,22 @@ const ReportGeneration = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setDivisions(data);
+        // Ensure divisions is always an array
+        if (Array.isArray(data)) {
+          setDivisions(data);
+        } else if (data.data && Array.isArray(data.data)) {
+          setDivisions(data.data);
+        } else if (data.divisions && Array.isArray(data.divisions)) {
+          setDivisions(data.divisions);
+        } else {
+          setDivisions([]);
+        }
+      } else {
+        setDivisions([]);
       }
     } catch (err) {
       console.error('Error fetching divisions:', err);
+      setDivisions([]);
     }
   };
 
@@ -73,14 +85,19 @@ const ReportGeneration = () => {
           'Content-Type': 'application/json'
         }
       });
-      
       if (response.ok) {
         const data = await response.json();
-        setAllSections(data);
-        setSections(data);
+        const arr = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+        setAllSections(arr);
+        setSections(arr);
+      } else {
+        setAllSections([]);
+        setSections([]);
       }
     } catch (err) {
       console.error('Error fetching sections:', err);
+      setAllSections([]);
+      setSections([]);
     }
   };
 
@@ -93,10 +110,12 @@ const ReportGeneration = () => {
           'Content-Type': 'application/json'
         }
       });
-      
       if (response.ok) {
         const data = await response.json();
-        setSections(data);
+        const arr = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+        setSections(arr);
+      } else {
+        setSections([]);
       }
     } catch (err) {
       console.error('Error fetching sections by division:', err);
@@ -126,42 +145,95 @@ const ReportGeneration = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const endpoint = reportType === 'meal' ? 'meal-reports' : 'attendance-reports';
-      
-      const params = new URLSearchParams({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-        scope: reportScope,
-        ...(reportScope === 'individual' && { employeeId }),
-        ...(reportScope === 'group' && { 
-          divisionId: divisionId !== 'all' ? divisionId : '',
-          sectionId: sectionId !== 'all' ? sectionId : ''
-        })
-      });
-
-      const response = await fetch(`http://localhost:5000/api/mysql/${endpoint}?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      let endpoint = '';
+      let apiUrl = '';
+      let payload = {};
+      if (reportType === 'attendance') {
+        endpoint = '/api/reports/mysql/attendance';
+        apiUrl = `http://localhost:5000${endpoint}`;
+        payload = {
+          report_type: reportScope,
+          employee_id: reportScope === 'individual' ? employeeId : '',
+          division_id: reportScope === 'group' ? (divisionId !== 'all' ? divisionId : '') : '',
+          section_id: reportScope === 'group' ? (sectionId !== 'all' ? sectionId : '') : '',
+          from_date: dateRange.startDate,
+          to_date: dateRange.endDate
+        };
+      } else if (reportType === 'meal') {
+        endpoint = 'meal-reports';
+        apiUrl = `http://localhost:5000/api/mysql/${endpoint}`;
+        payload = {
+          // Add meal report payload structure here if needed
+        };
+      } else if (reportType === 'audit') {
+        endpoint = 'audit-reports';
+        apiUrl = `http://localhost:5000/api/mysql/${endpoint}`;
+        payload = {
+          // Add audit report payload structure here if needed
+        };
       }
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setReportData(data);
+      let response;
+      if (reportType === 'attendance') {
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // Keep previous GET logic for other report types
+        const params = new URLSearchParams({
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          scope: reportScope,
+          ...(reportScope === 'individual' && { employeeId }),
+          ...(reportScope === 'group' && {
+            divisionId: divisionId !== 'all' ? divisionId : '',
+            sectionId: sectionId !== 'all' ? sectionId : ''
+          })
+        });
+        response = await fetch(apiUrl + `?${params}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        setError('Invalid response from server.');
+        setReportData(null);
+        return;
+      }
+
+      if (!response.ok) {
+        // Show backend error message if available
+        setError(data.message || `HTTP error! status: ${response.status}`);
+        setReportData(null);
+        return;
+      }
+
+      // Accept both {success, data} and just {data} responses
+      const reportArray = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+      if ((data.success && reportArray.length > 0) || (!data.success && reportArray.length > 0)) {
+        setReportData({ ...data, data: reportArray });
         setError('');
+      } else if (reportArray.length === 0) {
+        setError('No records found for the selected criteria.');
+        setReportData({ ...data, data: [] });
       } else {
         setError(data.message || 'Failed to generate report');
         setReportData(null);
       }
     } catch (err) {
       console.error('Error generating report:', err);
-      setError('Failed to generate report. Please try again.');
+      setError(err.message || 'Failed to generate report. Please try again.');
       setReportData(null);
     } finally {
       setLoading(false);
@@ -202,6 +274,8 @@ const ReportGeneration = () => {
       return reportScope === 'individual'
         ? ['Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items']
         : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items'];
+    } else if (reportType === 'audit') {
+      return ['Audit ID', 'User', 'Action', 'Timestamp', 'Details'];
     } else {
       return reportScope === 'individual'
         ? ['Date', 'Time', 'Scan Type', 'Status']
@@ -218,6 +292,8 @@ const ReportGeneration = () => {
       return reportScope === 'individual'
         ? [record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items]
         : [record.employee_id || record.user?.employeeId, record.employee_name || `${record.user?.firstName} ${record.user?.lastName}`, record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items];
+    } else if (reportType === 'audit') {
+      return [record.audit_id, record.user, record.action, record.timestamp, record.details];
     } else {
       return reportScope === 'individual'
         ? [record.date_, record.time_, record.scan_type, record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF']
@@ -279,6 +355,7 @@ const ReportGeneration = () => {
               >
                 <option value="attendance">Attendance Report</option>
                 <option value="meal">Meal Report</option>
+                <option value="audit">Audit Report</option>
               </select>
             </div>
 
@@ -332,7 +409,7 @@ const ReportGeneration = () => {
                   className="form-control"
                 >
                   <option value="all">All Divisions</option>
-                  {divisions.map(division => (
+                  {(Array.isArray(divisions) ? divisions : []).map(division => (
                     <option key={division.division_id} value={division.division_id}>
                       {division.division_name}
                     </option>
@@ -355,7 +432,7 @@ const ReportGeneration = () => {
                   className="form-control"
                 >
                   <option value="all">All Sections</option>
-                  {sections.map(section => (
+                  {(Array.isArray(sections) ? sections : []).map(section => (
                     <option key={section.section_id} value={section.section_id}>
                       {section.section_name}
                     </option>

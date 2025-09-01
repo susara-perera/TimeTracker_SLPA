@@ -247,11 +247,12 @@ const MealManagement = () => {
 
   return (
     <div className="meal-management">
-      {/* Header Section */}
-      <div className="meal-header text-center">
-        <h1 className="display-4 mb-3">🍽️ Meal Management System</h1>
-        <p className="lead mb-2">Professional Meal Booking for SLPA</p>
-        <small className="text-light">Book and manage meal reservations for employees</small>
+      {/* Professional Section Header (like UserManagement, no colors) */}
+      <div className="section-header" style={{ marginBottom: '32px', padding: '32px 0 16px 0', borderBottom: '2px solid #eee', background: 'none', boxShadow: 'none', borderRadius: '0', textAlign: 'left' }}>
+        <h2 style={{ fontSize: '2.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+          <i className="bi bi-utensils" style={{ fontSize: '2rem' }}></i>
+          Meal Management
+        </h2>
       </div>
 
       {message && (

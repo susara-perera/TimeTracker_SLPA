@@ -3,7 +3,7 @@ const Role = require('../models/Role');
 // Return the permission catalog (categories and permission ids/names)
 const getPermissionCatalog = async (req, res) => {
   try {
-    // Hard-coded catalog — keep in sync with frontend availablePermissions
+    // Updated catalog: includes all system modules, including employee management
     const catalog = [
       {
         category: 'users',
@@ -74,6 +74,16 @@ const getPermissionCatalog = async (req, res) => {
           { id: 'read', name: 'View Settings' },
           { id: 'update', name: 'Update Settings' },
           { id: 'delete', name: 'Delete Settings' }
+        ]
+      },
+      {
+        category: 'employees',
+        name: 'Employee Management',
+        permissions: [
+          { id: 'create', name: 'Create Employees' },
+          { id: 'read', name: 'View Employees' },
+          { id: 'update', name: 'Update Employees' },
+          { id: 'delete', name: 'Delete Employees' }
         ]
       }
     ];
