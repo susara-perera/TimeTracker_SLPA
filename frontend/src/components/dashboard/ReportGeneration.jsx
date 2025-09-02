@@ -18,6 +18,7 @@ const ReportGeneration = () => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState('');
+  const [employeeInfo, setEmployeeInfo] = useState(null);
 
   // permission checks
   const canGenerate = usePermission('reports', 'create');
@@ -48,7 +49,7 @@ const ReportGeneration = () => {
   const fetchDivisions = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/mysql/divisions', {
+      const response = await fetch('http://localhost:5000/api/divisions', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -57,7 +58,7 @@ const ReportGeneration = () => {
       
       if (response.ok) {
         const data = await response.json();
-        // Ensure divisions is always an array
+        // Handle different response formats
         if (Array.isArray(data)) {
           setDivisions(data);
         } else if (data.data && Array.isArray(data.data)) {
@@ -79,7 +80,7 @@ const ReportGeneration = () => {
   const fetchAllSections = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/mysql/sections', {
+      const response = await fetch('http://localhost:5000/api/sections', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -87,9 +88,18 @@ const ReportGeneration = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        const arr = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
-        setAllSections(arr);
-        setSections(arr);
+        // Handle different response formats for MongoDB
+        let sectionsArray = [];
+        if (Array.isArray(data)) {
+          sectionsArray = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          sectionsArray = data.data;
+        } else if (data.sections && Array.isArray(data.sections)) {
+          sectionsArray = data.sections;
+        }
+        
+        setAllSections(sectionsArray);
+        setSections(sectionsArray);
       } else {
         setAllSections([]);
         setSections([]);
@@ -104,7 +114,7 @@ const ReportGeneration = () => {
   const fetchSectionsByDivision = async (divId) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/mysql/sections/division/${divId}`, {
+      const response = await fetch(`http://localhost:5000/api/sections/division/${divId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -112,8 +122,17 @@ const ReportGeneration = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        const arr = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
-        setSections(arr);
+        // Handle different response formats for MongoDB
+        let sectionsArray = [];
+        if (Array.isArray(data)) {
+          sectionsArray = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          sectionsArray = data.data;
+        } else if (data.sections && Array.isArray(data.sections)) {
+          sectionsArray = data.sections;
+        }
+        
+        setSections(sectionsArray);
       } else {
         setSections([]);
       }
@@ -145,12 +164,12 @@ const ReportGeneration = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      let endpoint = '';
       let apiUrl = '';
       let payload = {};
+
       if (reportType === 'attendance') {
-        endpoint = '/api/reports/mysql/attendance';
-        apiUrl = `http://localhost:5000${endpoint}`;
+        // Use MongoDB API for attendance reports
+        apiUrl = 'http://localhost:5000/api/reports/attendance';
         payload = {
           report_type: reportScope,
           employee_id: reportScope === 'individual' ? employeeId : '',
@@ -160,17 +179,19 @@ const ReportGeneration = () => {
           to_date: dateRange.endDate
         };
       } else if (reportType === 'meal') {
-        endpoint = 'meal-reports';
-        apiUrl = `http://localhost:5000/api/mysql/${endpoint}`;
-        payload = {
-          // Add meal report payload structure here if needed
-        };
-      } else if (reportType === 'audit') {
-        endpoint = 'audit-reports';
-        apiUrl = `http://localhost:5000/api/mysql/${endpoint}`;
-        payload = {
-          // Add audit report payload structure here if needed
-        };
+        // Use MongoDB API for meal reports
+        apiUrl = 'http://localhost:5000/api/meal-reports';
+        const params = new URLSearchParams({
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          scope: reportScope,
+          ...(reportScope === 'individual' && { employeeId }),
+          ...(reportScope === 'group' && {
+            divisionId: divisionId !== 'all' ? divisionId : '',
+            sectionId: sectionId !== 'all' ? sectionId : ''
+          })
+        });
+        apiUrl += `?${params}`;
       }
 
       let response;
@@ -184,18 +205,7 @@ const ReportGeneration = () => {
           body: JSON.stringify(payload)
         });
       } else {
-        // Keep previous GET logic for other report types
-        const params = new URLSearchParams({
-          startDate: dateRange.startDate,
-          endDate: dateRange.endDate,
-          scope: reportScope,
-          ...(reportScope === 'individual' && { employeeId }),
-          ...(reportScope === 'group' && {
-            divisionId: divisionId !== 'all' ? divisionId : '',
-            sectionId: sectionId !== 'all' ? sectionId : ''
-          })
-        });
-        response = await fetch(apiUrl + `?${params}`, {
+        response = await fetch(apiUrl, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -213,16 +223,18 @@ const ReportGeneration = () => {
       }
 
       if (!response.ok) {
-        // Show backend error message if available
         setError(data.message || `HTTP error! status: ${response.status}`);
         setReportData(null);
         return;
       }
 
-      // Accept both {success, data} and just {data} responses
+      // Handle MongoDB response format
       const reportArray = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
-      if ((data.success && reportArray.length > 0) || (!data.success && reportArray.length > 0)) {
+      if ((data.success && reportArray.length > 0) || (!data.hasOwnProperty('success') && reportArray.length > 0)) {
         setReportData({ ...data, data: reportArray });
+        if (data.employee_info) {
+          setEmployeeInfo(data.employee_info);
+        }
         setError('');
       } else if (reportArray.length === 0) {
         setError('No records found for the selected criteria.');
@@ -246,26 +258,8 @@ const ReportGeneration = () => {
       return;
     }
 
-    const headers = getHeaders();
-    const rows = reportData.data.map(formatRow);
-    
-    if (format === 'csv') {
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-      ].join('\n');
-      
-      downloadFile(csvContent, `${reportType}_report_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
-    } else if (format === 'json') {
-      const jsonData = {
-        reportType,
-        reportScope,
-        dateRange,
-        generatedAt: new Date().toISOString(),
-        data: reportData.data
-      };
-      
-      downloadFile(JSON.stringify(jsonData, null, 2), `${reportType}_report_${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+    if (format === 'pdf') {
+      printReport();
     }
   };
 
@@ -274,12 +268,8 @@ const ReportGeneration = () => {
       return reportScope === 'individual'
         ? ['Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items']
         : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items'];
-    } else if (reportType === 'audit') {
-      return ['Audit ID', 'User', 'Action', 'Timestamp', 'Details'];
     } else {
-      return reportScope === 'individual'
-        ? ['Date', 'Time', 'Scan Type', 'Status']
-        : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Scan Type', 'Status'];
+      return ['Punch Date', 'Punch Time', 'Function', 'Event Description', 'Remarks'];
     }
   };
 
@@ -292,12 +282,16 @@ const ReportGeneration = () => {
       return reportScope === 'individual'
         ? [record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items]
         : [record.employee_id || record.user?.employeeId, record.employee_name || `${record.user?.firstName} ${record.user?.lastName}`, record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items];
-    } else if (reportType === 'audit') {
-      return [record.audit_id, record.user, record.action, record.timestamp, record.details];
     } else {
-      return reportScope === 'individual'
-        ? [record.date_, record.time_, record.scan_type, record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF']
-        : [record.employee_ID, record.employee_name, record.date_, record.time_, record.scan_type, record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'];
+      // Format for attendance report to match your sample
+      const eventDescription = `Granted(ID & F ${record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'})`;
+      return [
+        record.date_,
+        record.time_,
+        record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0',
+        eventDescription,
+        'COM0002'
+      ];
     }
   };
 
@@ -313,15 +307,105 @@ const ReportGeneration = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  // Print functionality - simplified placeholder
   const printReport = () => {
     if (!reportData || !reportData.data || reportData.data.length === 0) {
       alert('No data to print. Please generate a report first.');
       return;
     }
     
-    // Simple print functionality - opens print dialog with current page
-    window.print();
+    // Create a new window for printing with formatted content
+    const printWindow = window.open('', '_blank');
+    const printContent = generatePrintContent();
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const generatePrintContent = () => {
+    const reportTitle = reportType === 'attendance' ? 'History Transaction Report' : 'Meal Consumption Report';
+    const subtitle = reportType === 'attendance' ? 'All Granted(ID & FP) Records' : 'All Meal Records';
+    
+    let employeeHeader = '';
+    if (reportScope === 'individual' && employeeInfo) {
+      employeeHeader = `
+        <div style="margin-bottom: 20px;">
+          <div><strong>Emp No:</strong> ${employeeInfo.employee_id || employeeId}</div>
+          <div><strong>Emp Name:</strong> ${employeeInfo.name || 'N/A'}</div>
+        </div>
+      `;
+    }
+
+    const headers = getHeaders();
+    const tableRows = reportData.data.map(record => {
+      const row = formatRow(record);
+      return `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`;
+    }).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${reportTitle}</title>
+        <style>
+          body { font-family: 'Courier New', monospace; font-size: 11px; margin: 20px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .report-title { font-weight: bold; font-size: 14px; margin-bottom: 5px; }
+          .report-subtitle { font-size: 11px; margin-bottom: 15px; }
+          .date-range { margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th, td { border: 1px solid #000; padding: 4px 6px; text-align: center; }
+          th { background: #f5f5f5; font-weight: bold; }
+          .signature-section { margin-top: 50px; display: flex; justify-content: space-between; }
+          .signature-block { text-align: center; min-width: 200px; }
+          .signature-line { border-bottom: 1px solid #000; height: 40px; margin-bottom: 5px; }
+          @media print {
+            @page { margin: 0.5in; }
+            body { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="report-title">${reportTitle}</div>
+          <div class="report-subtitle">${subtitle}</div>
+          <div style="text-align: right; font-size: 10px;">
+            <div>Printed Date: ${new Date().toLocaleDateString()}</div>
+            <div>Printed Time: ${new Date().toLocaleTimeString()}</div>
+            <div>Page 1 of 1</div>
+          </div>
+        </div>
+        
+        ${employeeHeader}
+        
+        <div class="date-range">
+          <strong>Date From:</strong> ${dateRange.startDate} <strong>To:</strong> ${dateRange.endDate}
+        </div>
+        
+        <table>
+          <thead>
+            <tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+        
+        <div class="signature-section">
+          <div class="signature-block">
+            <div class="signature-line"></div>
+            <div>Authorized Signature</div>
+          </div>
+          <div class="signature-block">
+            <div class="signature-line"></div>
+            <div>Employee Signature</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
   };
 
   return (
@@ -355,7 +439,6 @@ const ReportGeneration = () => {
               >
                 <option value="attendance">Attendance Report</option>
                 <option value="meal">Meal Report</option>
-                <option value="audit">Audit Report</option>
               </select>
             </div>
 
@@ -410,8 +493,8 @@ const ReportGeneration = () => {
                 >
                   <option value="all">All Divisions</option>
                   {(Array.isArray(divisions) ? divisions : []).map(division => (
-                    <option key={division.division_id} value={division.division_id}>
-                      {division.division_name}
+                    <option key={division._id || division.id} value={division._id || division.id}>
+                      {division.name || division.division_name}
                     </option>
                   ))}
                 </select>
@@ -433,8 +516,8 @@ const ReportGeneration = () => {
                 >
                   <option value="all">All Sections</option>
                   {(Array.isArray(sections) ? sections : []).map(section => (
-                    <option key={section.section_id} value={section.section_id}>
-                      {section.section_name}
+                    <option key={section._id || section.id} value={section._id || section.id}>
+                      {section.name || section.section_name}
                     </option>
                   ))}
                 </select>
@@ -533,25 +616,11 @@ const ReportGeneration = () => {
               </h4>
               <div className="action-buttons">
                 <button
-                  onClick={() => exportReport('csv')}
-                  className="btn btn-outline-success"
-                >
-                  <i className="bi bi-file-earmark-spreadsheet"></i>
-                  Export CSV
-                </button>
-                <button
-                  onClick={() => exportReport('json')}
-                  className="btn btn-outline-info"
-                >
-                  <i className="bi bi-file-earmark-code"></i>
-                  Export JSON
-                </button>
-                <button
-                  onClick={printReport}
+                  onClick={() => exportReport('pdf')}
                   className="btn btn-outline-primary"
                 >
-                  <i className="bi bi-printer"></i>
-                  Print Report
+                  <i className="bi bi-file-earmark-pdf"></i>
+                  Print PDF
                 </button>
               </div>
             </div>
@@ -589,9 +658,9 @@ const ReportGeneration = () => {
                 <p className="preview-note">
                   <i className="bi bi-info-circle"></i>
                   Showing first 10 records of {reportData.data.length} total records.
-                  Use export functions to access all data.
+                  Use print function to access all data.
                 </p>
-              )}
+                )}
             </div>
           </div>
         </div>
