@@ -39,8 +39,10 @@ const ReportGeneration = () => {
   // Fetch sections when division changes
   useEffect(() => {
     if (divisionId && divisionId !== 'all') {
+      console.log('Fetching sections for division:', divisionId); // Debug log
       fetchSectionsByDivision(divisionId);
     } else {
+      console.log('Setting all sections'); // Debug log
       setSections(allSections);
       setSectionId('all');
     }
@@ -114,14 +116,17 @@ const ReportGeneration = () => {
   const fetchSectionsByDivision = async (divId) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/sections/division/${divId}`, {
+      const response = await fetch(`http://localhost:5000/api/divisions/${divId}/sections`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Sections response for division:', divId, data); // Debug log
+        
         // Handle different response formats for MongoDB
         let sectionsArray = [];
         if (Array.isArray(data)) {
@@ -130,15 +135,26 @@ const ReportGeneration = () => {
           sectionsArray = data.data;
         } else if (data.sections && Array.isArray(data.sections)) {
           sectionsArray = data.sections;
+        } else if (data.success && data.sections) {
+          sectionsArray = Array.isArray(data.sections) ? data.sections : [];
         }
         
+        console.log('Processed sections array:', sectionsArray); // Debug log
         setSections(sectionsArray);
+        
+        // Reset section selection to 'all' when division changes
+        if (sectionsArray.length > 0) {
+          setSectionId('all');
+        }
       } else {
+        console.error('Failed to fetch sections:', response.status, response.statusText);
         setSections([]);
+        setSectionId('all');
       }
     } catch (err) {
       console.error('Error fetching sections by division:', err);
       setSections([]);
+      setSectionId('all');
     }
   };
 
@@ -168,8 +184,8 @@ const ReportGeneration = () => {
       let payload = {};
 
       if (reportType === 'attendance') {
-        // Use MongoDB API for attendance reports
-        apiUrl = 'http://localhost:5000/api/reports/attendance';
+        // Use MySQL API for attendance reports
+        apiUrl = 'http://localhost:5000/api/reports/mysql/attendance';
         payload = {
           report_type: reportScope,
           employee_id: reportScope === 'individual' ? employeeId : '',
@@ -268,6 +284,16 @@ const ReportGeneration = () => {
       return reportScope === 'individual'
         ? ['Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items']
         : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items'];
+    } else if (reportScope === 'group' && reportData?.reportType === 'group') {
+      // Group attendance report headers: Employee info + dates
+      const headers = ['Employee ID', 'Employee Name', 'Division', 'Section'];
+      if (reportData.dates) {
+        reportData.dates.forEach(date => {
+          headers.push(`${date} In`);
+          headers.push(`${date} Out`);
+        });
+      }
+      return headers;
     } else {
       return ['Punch Date', 'Punch Time', 'Function', 'Event Description', 'Remarks'];
     }
@@ -282,6 +308,29 @@ const ReportGeneration = () => {
       return reportScope === 'individual'
         ? [record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items]
         : [record.employee_id || record.user?.employeeId, record.employee_name || `${record.user?.firstName} ${record.user?.lastName}`, record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items];
+    } else if (reportScope === 'group' && reportData?.reportType === 'group') {
+      // Format group attendance report row
+      const row = [
+        record.employeeId,
+        record.employeeName,
+        record.division,
+        record.section
+      ];
+      
+      if (reportData.dates && record.dailyAttendance) {
+        reportData.dates.forEach(date => {
+          const dayData = record.dailyAttendance[date];
+          if (dayData) {
+            row.push(dayData.checkIn || '-');
+            row.push(dayData.checkOut || '-');
+          } else {
+            row.push('-');
+            row.push('-');
+          }
+        });
+      }
+      
+      return row;
     } else {
       // Format for attendance report to match your sample
       const eventDescription = `Granted(ID & F ${record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'})`;
@@ -588,7 +637,10 @@ const ReportGeneration = () => {
       )}
 
       {/* Report Results */}
-      {reportData && reportData.data && reportData.data.length > 0 ? (
+      {reportData && (
+        (reportData.data && reportData.data.length > 0) || 
+        (reportData.reportType === 'group' && reportData.employees && reportData.employees.length > 0)
+      ) ? (
         <div className="report-results">
           <div className="results-header">
             <h3>
@@ -598,7 +650,10 @@ const ReportGeneration = () => {
             <div className="report-meta">
               <span className="record-count">
                 <i className="bi bi-list-ol"></i>
-                {reportData.data.length} records found
+                {reportData.reportType === 'group' 
+                  ? `${reportData.employees?.length || 0} employees found`
+                  : `${reportData.data?.length || 0} records found`
+                }
               </span>
               <span className="generated-time">
                 <i className="bi bi-clock"></i>
@@ -642,29 +697,48 @@ const ReportGeneration = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {reportData.data.slice(0, 10).map((record, index) => {
-                    const row = formatRow(record);
-                    return (
-                      <tr key={index}>
-                        {row.map((cell, cellIndex) => (
-                          <td key={cellIndex}>{cell}</td>
-                        ))}
-                      </tr>
-                    );
-                  })}
+                  {reportData.reportType === 'group' ? (
+                    reportData.employees.slice(0, 10).map((record, index) => {
+                      const row = formatRow(record);
+                      return (
+                        <tr key={index}>
+                          {row.map((cell, cellIndex) => (
+                            <td key={cellIndex}>{cell}</td>
+                          ))}
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    reportData.data.slice(0, 10).map((record, index) => {
+                      const row = formatRow(record);
+                      return (
+                        <tr key={index}>
+                          {row.map((cell, cellIndex) => (
+                            <td key={cellIndex}>{cell}</td>
+                          ))}
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
-              {reportData.data.length > 10 && (
+              {((reportData.reportType === 'group' && reportData.employees.length > 10) || 
+                (reportData.data && reportData.data.length > 10)) && (
                 <p className="preview-note">
                   <i className="bi bi-info-circle"></i>
-                  Showing first 10 records of {reportData.data.length} total records.
+                  Showing first 10 records of {reportData.reportType === 'group' 
+                    ? reportData.employees.length 
+                    : reportData.data.length} total records.
                   Use print function to access all data.
                 </p>
                 )}
             </div>
           </div>
         </div>
-      ) : reportData && (!reportData.data || reportData.data.length === 0) ? (
+      ) : reportData && (
+        (!reportData.data || reportData.data.length === 0) &&
+        (reportData.reportType !== 'group' || !reportData.employees || reportData.employees.length === 0)
+      ) ? (
         <div className="report-results">
           <div className="empty-state">
             <div className="empty-icon">
