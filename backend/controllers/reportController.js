@@ -1087,6 +1087,23 @@ const generateMySQLAttendanceReport = async (req, res) => {
 
     let sql, params;
 
+    // Handle group reports differently to match the required format
+    if (report_type === 'group') {
+      const groupReportData = await generateMySQLGroupAttendanceReport(from_date, to_date, division_id, section_id);
+      
+      // Close connection
+      await connection.end();
+      
+      return res.status(200).json({
+        success: true,
+        data: groupReportData.employees, // Extract employees array
+        summary: groupReportData.summary,
+        dates: groupReportData.dates,
+        reportType: 'group',
+        message: 'Group attendance report generated successfully'
+      });
+    }
+
     if (report_type === 'group' && (division_id || section_id)) {
       // Group report with division or section filter
       let employeeFilter = '';
@@ -1399,9 +1416,78 @@ const generateGroupAttendanceReport = async (attendanceQuery, start, end, userFi
   }
 };
 
+// Helper function to map MongoDB division ID to MySQL division ID
+const mapMongoToMySQLDivisionId = async (divisionId) => {
+  // Check if this is a MongoDB ObjectId (24 character hex string)
+  const isMongoId = divisionId && divisionId.length === 24 && /^[0-9a-fA-F]{24}$/.test(divisionId);
+  
+  if (!isMongoId) {
+    // Already a MySQL ID or invalid
+    return divisionId;
+  }
+
+  try {
+    console.log(`Mapping MongoDB division ID ${divisionId} to MySQL ID...`);
+    
+    // Get the division name from MongoDB
+    const Division = require('../models/Division');
+    const mongoDiv = await Division.findById(divisionId);
+    
+    if (!mongoDiv) {
+      console.log('MongoDB division not found');
+      return null;
+    }
+
+    console.log(`MongoDB division name: ${mongoDiv.name}`);
+
+    // Find the corresponding MySQL division by name
+    const connection = await createMySQLConnection();
+    
+    // Map common name variations
+    let searchName = mongoDiv.name.trim().toUpperCase();
+    if (searchName === 'INFORMATION SYSTEM') {
+      searchName = 'INFORMATION SYSTEMS';
+    }
+    
+    const [mysqlDivisions] = await connection.execute(`
+      SELECT division_id, division_name 
+      FROM divisions 
+      WHERE UPPER(division_name) = ? OR UPPER(division_name) LIKE ?
+      LIMIT 1
+    `, [searchName, `%${searchName}%`]);
+
+    await connection.end();
+
+    if (mysqlDivisions.length === 0) {
+      console.log(`No MySQL division found for name: ${searchName}`);
+      return null;
+    }
+
+    const mysqlId = mysqlDivisions[0].division_id.toString();
+    console.log(`Mapped to MySQL division ID: ${mysqlId}`);
+    return mysqlId;
+    
+  } catch (error) {
+    console.error('Error mapping division ID:', error);
+    return null;
+  }
+};
+
 // Helper function to generate MySQL-based group attendance report (tabular format)
 const generateMySQLGroupAttendanceReport = async (from_date, to_date, division_id, section_id) => {
   try {
+    // Map MongoDB division ID to MySQL division ID if needed
+    let mysqlDivisionId = division_id;
+    if (division_id && division_id !== 'all') {
+      const mappedId = await mapMongoToMySQLDivisionId(division_id);
+      if (mappedId) {
+        mysqlDivisionId = mappedId;
+        console.log(`Using mapped MySQL division ID: ${mysqlDivisionId}`);
+      } else {
+        console.log(`Could not map division ID: ${division_id}`);
+      }
+    }
+
     // Create MySQL connection
     const connection = await createMySQLConnection();
 
@@ -1418,9 +1504,9 @@ const generateMySQLGroupAttendanceReport = async (from_date, to_date, division_i
     if (section_id && section_id !== 'all') {
       employeeSql += ' AND e.section = ?';
       employeeParams.push(section_id);
-    } else if (division_id && division_id !== 'all') {
+    } else if (mysqlDivisionId && mysqlDivisionId !== 'all') {
       employeeSql += ' AND e.division = ?';
-      employeeParams.push(division_id);
+      employeeParams.push(mysqlDivisionId);
     }
 
     employeeSql += ' ORDER BY e.employee_ID ASC';
@@ -1560,5 +1646,6 @@ module.exports = {
   getReportSummary,
   getCustomReport,
   generateMySQLAttendanceReport,
-  generateMySQLMealReport
+  generateMySQLMealReport,
+  generateMySQLGroupAttendanceReport
 };

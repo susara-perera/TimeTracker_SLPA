@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import usePermission from '../../hooks/usePermission';
 import './ReportGeneration.css';
 
@@ -36,6 +36,62 @@ const ReportGeneration = () => {
     });
   }, []);
 
+  const fetchSectionsByDivision = useCallback(async (divId) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Use MySQL sections endpoint for attendance reports to get correct section IDs
+      const isAttendanceReport = reportType === 'attendance';
+      const sectionsEndpoint = isAttendanceReport 
+        ? `http://localhost:5000/api/divisions/${divId}/mysql-sections`
+        : `http://localhost:5000/api/divisions/${divId}/sections`;
+      
+      console.log(`Fetching sections from: ${sectionsEndpoint}`); // Debug log
+      
+      const response = await fetch(sectionsEndpoint, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Sections response for division:', divId, data); // Debug log
+        
+        // Handle different response formats for MongoDB and MySQL
+        let sectionsArray = [];
+        if (Array.isArray(data)) {
+          sectionsArray = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          sectionsArray = data.data;
+        } else if (data.sections && Array.isArray(data.sections)) {
+          sectionsArray = data.sections;
+        } else if (data.success && data.sections) {
+          sectionsArray = Array.isArray(data.sections) ? data.sections : [];
+        }
+        
+        console.log('Processed sections array:', sectionsArray); // Debug log
+        setSections(sectionsArray);
+        
+        // Reset section selection to 'all' when division changes
+        if (sectionsArray.length > 0) {
+          setSectionId('all');
+        }
+      } else {
+        console.error('Failed to fetch sections:', response.status, response.statusText);
+        // Don't show error for divisions that don't have MySQL sections
+        // Just set empty sections array
+        setSections([]);
+        setSectionId('all');
+      }
+    } catch (err) {
+      console.error('Error fetching sections by division:', err);
+      setSections([]);
+      setSectionId('all');
+    }
+  }, [reportType]); // Add reportType as dependency since it affects which endpoint to use
+
   // Fetch sections when division changes
   useEffect(() => {
     if (divisionId && divisionId !== 'all') {
@@ -46,7 +102,7 @@ const ReportGeneration = () => {
       setSections(allSections);
       setSectionId('all');
     }
-  }, [divisionId, allSections]);
+  }, [divisionId, allSections, fetchSectionsByDivision]);
 
   const fetchDivisions = async () => {
     try {
@@ -110,51 +166,6 @@ const ReportGeneration = () => {
       console.error('Error fetching sections:', err);
       setAllSections([]);
       setSections([]);
-    }
-  };
-
-  const fetchSectionsByDivision = async (divId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/divisions/${divId}/sections`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Sections response for division:', divId, data); // Debug log
-        
-        // Handle different response formats for MongoDB
-        let sectionsArray = [];
-        if (Array.isArray(data)) {
-          sectionsArray = data;
-        } else if (data.data && Array.isArray(data.data)) {
-          sectionsArray = data.data;
-        } else if (data.sections && Array.isArray(data.sections)) {
-          sectionsArray = data.sections;
-        } else if (data.success && data.sections) {
-          sectionsArray = Array.isArray(data.sections) ? data.sections : [];
-        }
-        
-        console.log('Processed sections array:', sectionsArray); // Debug log
-        setSections(sectionsArray);
-        
-        // Reset section selection to 'all' when division changes
-        if (sectionsArray.length > 0) {
-          setSectionId('all');
-        }
-      } else {
-        console.error('Failed to fetch sections:', response.status, response.statusText);
-        setSections([]);
-        setSectionId('all');
-      }
-    } catch (err) {
-      console.error('Error fetching sections by division:', err);
-      setSections([]);
-      setSectionId('all');
     }
   };
 
@@ -247,7 +258,19 @@ const ReportGeneration = () => {
       // Handle MongoDB response format
       const reportArray = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
       if ((data.success && reportArray.length > 0) || (!data.hasOwnProperty('success') && reportArray.length > 0)) {
-        setReportData({ ...data, data: reportArray });
+        // For group reports, add reportType and dates to the response
+        const processedData = {
+          ...data,
+          data: reportArray
+        };
+        
+        // If this is a group report, add the reportType for frontend handling
+        if (reportScope === 'group' && data.reportType === 'group') {
+          processedData.reportType = 'group';
+          processedData.employees = reportArray; // For backward compatibility
+        }
+        
+        setReportData(processedData);
         if (data.employee_info) {
           setEmployeeInfo(data.employee_info);
         }
@@ -285,17 +308,24 @@ const ReportGeneration = () => {
         ? ['Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items']
         : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items'];
     } else if (reportScope === 'group' && reportData?.reportType === 'group') {
-      // Group attendance report headers: Employee info + dates
-      const headers = ['Employee ID', 'Employee Name', 'Division', 'Section'];
+      // Group attendance report headers: Employee info + dates in timesheet format
+      const headers = ['Emp No', 'Emp Name', 'Meal-Pkt-Mny'];
       if (reportData.dates) {
         reportData.dates.forEach(date => {
-          headers.push(`${date} In`);
-          headers.push(`${date} Out`);
+          // Format date as "DD-MMM-YY Day" like "30-Jun-25 Mon"
+          const dateObj = new Date(date);
+          const formattedDate = dateObj.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: '2-digit'
+          }).replace(/\//g, '-') + ' ' + dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+          headers.push(formattedDate);
         });
       }
       return headers;
     } else {
-      return ['Punch Date', 'Punch Time', 'Function', 'Event Description', 'Remarks'];
+      // Individual attendance report headers to match your reference exactly
+      return ['Emp No', 'Emp Name', 'Meal-Pkt-Mny', 'Punch Date', 'Punch Time', 'Function', 'Event Description'];
     }
   };
 
@@ -309,22 +339,34 @@ const ReportGeneration = () => {
         ? [record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items]
         : [record.employee_id || record.user?.employeeId, record.employee_name || `${record.user?.firstName} ${record.user?.lastName}`, record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items];
     } else if (reportScope === 'group' && reportData?.reportType === 'group') {
-      // Format group attendance report row
+      // Group attendance report in timesheet format like your reference
       const row = [
-        record.employeeId,
-        record.employeeName,
-        record.division,
-        record.section
+        record.employeeId, // Emp No
+        record.employeeName, // Emp Name
+        'I' // Meal-Pkt-Mny (always "I" for attendance records)
       ];
       
       if (reportData.dates && record.dailyAttendance) {
         reportData.dates.forEach(date => {
           const dayData = record.dailyAttendance[date];
-          if (dayData) {
-            row.push(dayData.checkIn || '-');
-            row.push(dayData.checkOut || '-');
+          if (dayData && dayData.status === 'present') {
+            // Show check-in and check-out times vertically (line by line)
+            const inTime = dayData.checkIn || '';
+            const outTime = dayData.checkOut || '';
+            
+            let timeDisplay = '';
+            if (inTime && outTime) {
+              timeDisplay = `${inTime}\n${outTime}`;
+            } else if (inTime) {
+              timeDisplay = inTime;
+            } else if (outTime) {
+              timeDisplay = outTime;
+            } else {
+              timeDisplay = '-';
+            }
+            
+            row.push(timeDisplay);
           } else {
-            row.push('-');
             row.push('-');
           }
         });
@@ -332,28 +374,33 @@ const ReportGeneration = () => {
       
       return row;
     } else {
-      // Format for attendance report to match your sample
-      const eventDescription = `Granted(ID & F ${record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'})`;
+      // Individual attendance report format to match your reference exactly
+      // Format: Emp No, Emp Name, Meal-Pkt-Mny, Punch Date, Punch Time, Function, Event Description
+      
+      // Format the punch date as "DD-MMM-YY Day" like "19-Aug-25 Tue"
+      const punchDate = new Date(record.date_);
+      const formattedDate = punchDate.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: '2-digit'
+      }).replace(/\//g, '-') + ' ' + punchDate.toLocaleDateString('en-US', { weekday: 'short' });
+      
+      // Determine function code based on scan type
+      const functionCode = record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0';
+      
+      // Format event description like your reference
+      const eventDescription = `${record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'}Granted(ID & F tally plan COM0002)`;
+      
       return [
-        record.date_,
-        record.time_,
-        record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0',
-        eventDescription,
-        'COM0002'
+        record.employee_ID || record.employeeId, // Emp No
+        record.employee_name || record.employeeName || 'Unknown', // Emp Name
+        'I', // Meal-Pkt-Mny (always "I" for attendance records as shown in your reference)
+        formattedDate, // Punch Date
+        record.time_, // Punch Time
+        functionCode, // Function
+        eventDescription // Event Description
       ];
     }
-  };
-
-  const downloadFile = (content, filename, contentType) => {
-    const blob = new Blob([content], { type: contentType });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
   };
 
   const printReport = () => {
@@ -390,7 +437,7 @@ const ReportGeneration = () => {
     const headers = getHeaders();
     const tableRows = reportData.data.map(record => {
       const row = formatRow(record);
-      return `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`;
+      return `<tr>${row.map(cell => `<td style="border: 1px solid #000; padding: 4px 6px; text-align: center; font-size: 10px; white-space: pre-line;">${cell}</td>`).join('')}</tr>`;
     }).join('');
 
     return `
@@ -406,13 +453,16 @@ const ReportGeneration = () => {
           .date-range { margin-bottom: 20px; }
           table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
           th, td { border: 1px solid #000; padding: 4px 6px; text-align: center; }
-          th { background: #f5f5f5; font-weight: bold; }
+          th { background: #f5f5f5; font-weight: bold; font-size: 10px; }
+          td { font-size: 9px; white-space: pre-line; }
           .signature-section { margin-top: 50px; display: flex; justify-content: space-between; }
           .signature-block { text-align: center; min-width: 200px; }
           .signature-line { border-bottom: 1px solid #000; height: 40px; margin-bottom: 5px; }
           @media print {
-            @page { margin: 0.5in; }
+            @page { margin: 0.5in; size: landscape; }
             body { margin: 0; }
+            table { font-size: 8px; }
+            th, td { padding: 2px 4px; }
           }
         </style>
       </head>
@@ -435,7 +485,7 @@ const ReportGeneration = () => {
         
         <table>
           <thead>
-            <tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr>
+            <tr>${headers.map(header => `<th style="font-size: 9px; padding: 4px 2px;">${header}</th>`).join('')}</tr>
           </thead>
           <tbody>
             ${tableRows}
@@ -638,8 +688,7 @@ const ReportGeneration = () => {
 
       {/* Report Results */}
       {reportData && (
-        (reportData.data && reportData.data.length > 0) || 
-        (reportData.reportType === 'group' && reportData.employees && reportData.employees.length > 0)
+        (reportData.data && reportData.data.length > 0)
       ) ? (
         <div className="report-results">
           <div className="results-header">
@@ -651,7 +700,7 @@ const ReportGeneration = () => {
               <span className="record-count">
                 <i className="bi bi-list-ol"></i>
                 {reportData.reportType === 'group' 
-                  ? `${reportData.employees?.length || 0} employees found`
+                  ? `${reportData.data?.length || 0} employees found`
                   : `${reportData.data?.length || 0} records found`
                 }
               </span>
@@ -692,18 +741,48 @@ const ReportGeneration = () => {
                 <thead>
                   <tr>
                     {getHeaders().map((header, index) => (
-                      <th key={index} scope="col">{header}</th>
+                      <th 
+                        key={index} 
+                        scope="col"
+                        style={{
+                          textAlign: 'center',
+                          fontSize: reportScope === 'group' ? '11px' : '12px',
+                          padding: '8px 4px',
+                          backgroundColor: '#f8f9fa',
+                          border: '1px solid #dee2e6',
+                          minWidth: reportScope === 'individual' ? 
+                            (index === 0 ? '80px' : index === 1 ? '150px' : index === 2 ? '60px' : '100px') :
+                            reportScope === 'group' ? 
+                            (index === 0 ? '80px' : index === 1 ? '150px' : index === 2 ? '60px' : '90px') :
+                            (index < 4 ? '120px' : '80px')
+                        }}
+                      >
+                        {header}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {reportData.reportType === 'group' ? (
-                    reportData.employees.slice(0, 10).map((record, index) => {
+                    reportData.data.slice(0, 10).map((record, index) => {
                       const row = formatRow(record);
                       return (
                         <tr key={index}>
                           {row.map((cell, cellIndex) => (
-                            <td key={cellIndex}>{cell}</td>
+                            <td 
+                              key={cellIndex}
+                              style={{
+                                whiteSpace: 'pre-line',
+                                textAlign: cellIndex === 0 || cellIndex === 2 ? 'center' : 
+                                          cellIndex === 1 ? 'left' : 'center',
+                                fontSize: '11px',
+                                padding: '4px 6px',
+                                verticalAlign: 'middle',
+                                border: '1px solid #dee2e6'
+                              }}
+                            >
+                              {cell}
+                            </td>
                           ))}
                         </tr>
                       );
@@ -714,7 +793,18 @@ const ReportGeneration = () => {
                       return (
                         <tr key={index}>
                           {row.map((cell, cellIndex) => (
-                            <td key={cellIndex}>{cell}</td>
+                            <td 
+                              key={cellIndex}
+                              style={{
+                                textAlign: cellIndex === 0 || cellIndex === 2 ? 'center' : 
+                                          cellIndex === 1 ? 'left' : 'center',
+                                fontSize: '11px',
+                                padding: '4px 6px',
+                                border: '1px solid #dee2e6'
+                              }}
+                            >
+                              {cell}
+                            </td>
                           ))}
                         </tr>
                       );
@@ -722,12 +812,12 @@ const ReportGeneration = () => {
                   )}
                 </tbody>
               </table>
-              {((reportData.reportType === 'group' && reportData.employees.length > 10) || 
+              {((reportData.reportType === 'group' && reportData.data.length > 10) || 
                 (reportData.data && reportData.data.length > 10)) && (
                 <p className="preview-note">
                   <i className="bi bi-info-circle"></i>
                   Showing first 10 records of {reportData.reportType === 'group' 
-                    ? reportData.employees.length 
+                    ? reportData.data.length 
                     : reportData.data.length} total records.
                   Use print function to access all data.
                 </p>
@@ -736,8 +826,7 @@ const ReportGeneration = () => {
           </div>
         </div>
       ) : reportData && (
-        (!reportData.data || reportData.data.length === 0) &&
-        (reportData.reportType !== 'group' || !reportData.employees || reportData.employees.length === 0)
+        (!reportData.data || reportData.data.length === 0)
       ) ? (
         <div className="report-results">
           <div className="empty-state">

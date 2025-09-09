@@ -7,6 +7,7 @@ const {
   deleteDivision,
   getDivisionEmployees,
   getDivisionSections,
+  getDivisionMySQLSections,
   getDivisionStats,
   toggleDivisionStatus
 } = require('../controllers/divisionController');
@@ -60,6 +61,15 @@ router.get(
   // queryValidation.pagination,
   // auditTrail('division_sections_viewed', 'Division'),
   getDivisionSections
+);
+
+// @route   GET /api/divisions/:id/mysql-sections
+// @desc    Get division sections from MySQL for attendance reports
+// @access  Private
+router.get(
+  '/:id/mysql-sections',
+  // auth, // Temporarily disable auth for testing
+  getDivisionMySQLSections
 );
 
 // @route   GET /api/divisions/:id/stats

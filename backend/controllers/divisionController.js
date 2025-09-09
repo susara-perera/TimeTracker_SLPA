@@ -650,6 +650,130 @@ const toggleDivisionStatus = async (req, res) => {
   }
 };
 
+// @desc    Get division sections from MySQL (for attendance reports)
+// @route   GET /api/divisions/:id/mysql-sections
+// @access  Private
+const getDivisionMySQLSections = async (req, res) => {
+  try {
+    const { createMySQLConnection } = require('../config/mysql');
+    const divisionId = req.params.id;
+
+    // Validate division ID
+    if (!divisionId || divisionId === 'all') {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid division ID is required'
+      });
+    }
+
+    console.log(`Getting MySQL sections for division ID: ${divisionId}`);
+
+    // Check if this is a MongoDB ObjectId (24 character hex string)
+    const isMongoId = divisionId.length === 24 && /^[0-9a-fA-F]{24}$/.test(divisionId);
+    let mysqlDivisionId = divisionId;
+
+    if (isMongoId) {
+      // This is a MongoDB ID, we need to map it to MySQL ID
+      console.log('MongoDB ID detected, mapping to MySQL ID...');
+      
+      // First, get the division name from MongoDB
+      const Division = require('../models/Division');
+      const mongoDiv = await Division.findById(divisionId);
+      
+      if (!mongoDiv) {
+        return res.status(404).json({
+          success: false,
+          message: 'Division not found in MongoDB'
+        });
+      }
+
+      console.log(`MongoDB division name: ${mongoDiv.name}`);
+
+      // Now find the corresponding MySQL division by name
+      const connection = await createMySQLConnection();
+      
+      // Map common name variations
+      let searchName = mongoDiv.name.trim().toUpperCase();
+      if (searchName === 'INFORMATION SYSTEM') {
+        searchName = 'INFORMATION SYSTEMS';
+      }
+      
+      const [mysqlDivisions] = await connection.execute(`
+        SELECT division_id, division_name 
+        FROM divisions 
+        WHERE UPPER(division_name) = ? OR UPPER(division_name) LIKE ?
+        LIMIT 1
+      `, [searchName, `%${searchName}%`]);
+
+      if (mysqlDivisions.length === 0) {
+        await connection.end();
+        console.log(`No MySQL division found for name: ${searchName}`);
+        
+        // Return empty sections instead of error for divisions that don't exist in MySQL
+        return res.status(200).json({
+          success: true,
+          data: [], // Empty sections array
+          count: 0,
+          message: `No MySQL sections found for division: ${mongoDiv.name}`,
+          mapping: {
+            mongoId: divisionId,
+            mysqlId: null,
+            reason: 'Division not found in MySQL database'
+          }
+        });
+      }
+
+      mysqlDivisionId = mysqlDivisions[0].division_id;
+      console.log(`Mapped to MySQL division ID: ${mysqlDivisionId}`);
+      
+      await connection.end();
+    }
+
+    // Now get sections for the MySQL division ID
+    const connection = await createMySQLConnection();
+
+    const [sections] = await connection.execute(`
+      SELECT s.section_id, s.section_name, s.division_id, d.division_name
+      FROM sections s
+      LEFT JOIN divisions d ON s.division_id = d.division_id
+      WHERE s.division_id = ?
+      ORDER BY s.section_name ASC
+    `, [mysqlDivisionId]);
+
+    await connection.end();
+
+    // Format for frontend compatibility
+    const formattedSections = sections.map(section => ({
+      _id: section.section_id.toString(), // Use MySQL ID as _id for compatibility
+      section_id: section.section_id,
+      section_name: section.section_name,
+      name: section.section_name, // Alternative property name
+      division_id: section.division_id,
+      division_name: section.division_name,
+      isActive: true // Default for MySQL sections
+    }));
+
+    console.log(`Found ${formattedSections.length} MySQL sections for division ${mysqlDivisionId}`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedSections,
+      count: formattedSections.length,
+      mapping: isMongoId ? {
+        mongoId: divisionId,
+        mysqlId: mysqlDivisionId
+      } : null
+    });
+
+  } catch (error) {
+    console.error('Get division MySQL sections error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error getting division sections from MySQL'
+    });
+  }
+};
+
 module.exports = {
   getDivisions,
   getDivision,
@@ -658,6 +782,7 @@ module.exports = {
   deleteDivision,
   getDivisionEmployees,
   getDivisionSections,
+  getDivisionMySQLSections,
   getDivisionStats,
   toggleDivisionStatus
 };
