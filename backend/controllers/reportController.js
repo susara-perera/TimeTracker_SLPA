@@ -112,27 +112,27 @@ const getAttendanceReport = async (req, res) => {
     }
 
     // Log report generation (temporarily comment out for testing)
-    // if (req.user) {
-    //   await AuditLog.createLog({
-    //     user: req.user._id,
-    //     action: 'report_generated',
-    //     entity: { type: 'Report' },
-    //     category: 'data_modification',
-    //     severity: 'low',
-    //     description: 'Attendance report generated',
-    //     details: `Generated attendance report for ${start.format('YYYY-MM-DD')} to ${end.format('YYYY-MM-DD')}`,
-    //     metadata: {
-    //       ipAddress: req.ip,
-    //       userAgent: req.get('User-Agent'),
-    //       method: req.method,
-    //       endpoint: req.originalUrl,
-    //       reportType: 'attendance',
-    //       dateRange: { start: start.format('YYYY-MM-DD'), end: end.format('YYYY-MM-DD') },
-    //       groupBy,
-    //       filters
-    //     }
-    //   });
-    // }
+    if (req.user) {
+      await AuditLog.createLog({
+        user: req.user._id,
+        action: 'report_generated',
+        entity: { type: 'Report', id: req.user._id },
+        category: 'data_modification',
+        severity: 'low',
+        description: 'Attendance report generated',
+        details: `Generated attendance report for ${start.format('YYYY-MM-DD')} to ${end.format('YYYY-MM-DD')}`,
+        metadata: {
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+          method: req.method,
+          endpoint: req.originalUrl,
+          reportType: 'attendance',
+          dateRange: { start: start.format('YYYY-MM-DD'), end: end.format('YYYY-MM-DD') },
+          groupBy,
+          filters
+        }
+      });
+    }
 
     if (format === 'csv') {
       return generateCSVResponse(res, reportData, 'attendance_report');
@@ -1346,15 +1346,55 @@ const generateGroupAttendanceReport = async (attendanceQuery, start, end, userFi
       .select('user date checkIn checkOut status workingHours overtime')
       .sort({ date: 1 });
 
-    // Create attendance map for quick lookup
+    // Create attendance map for quick lookup and normalize multiple records per day
     const attendanceMap = {};
     attendanceRecords.forEach(record => {
+      if (!record.user) return;
       const dateKey = moment(record.date).format('YYYY-MM-DD');
       const userKey = record.user._id.toString();
-      if (!attendanceMap[userKey]) {
-        attendanceMap[userKey] = {};
+      attendanceMap[userKey] = attendanceMap[userKey] || {};
+      attendanceMap[userKey][dateKey] = attendanceMap[userKey][dateKey] || {
+        checkIns: [],
+        checkOuts: [],
+        punches: [],
+        statuses: [],
+        workingHours: 0,
+        overtime: 0
+      };
+
+      // Normalize checkIn/checkOut values (could be nested objects)
+      const normalizeTime = (field) => {
+        if (!field) return null;
+        // If DB stored raw string keys like time or time_, prefer returning that raw string
+        if (typeof field === 'object') {
+          if (field.time_) return field.time_;
+          if (field.time) return field.time;
+        }
+        // If it's a Date instance, format to HH:mm:ss
+        if (field instanceof Date) return moment(field).format('HH:mm:ss');
+        // If it's already a string that looks like a time, return as-is
+        if (typeof field === 'string') {
+          if (/^\d{1,2}:\d{2}:\d{2}$/.test(field) || /^\d{1,2}:\d{2}$/.test(field)) return field;
+          // Try parsing ISO and return time portion
+          const parsed = moment(field);
+          if (parsed.isValid()) return parsed.format('HH:mm:ss');
+        }
+        return null;
+      };
+
+      const ckIn = normalizeTime(record.checkIn);
+      const ckOut = normalizeTime(record.checkOut);
+      if (ckIn) {
+        attendanceMap[userKey][dateKey].checkIns.push(ckIn);
+        attendanceMap[userKey][dateKey].punches.push({ time: ckIn, type: 'IN' });
       }
-      attendanceMap[userKey][dateKey] = record;
+      if (ckOut) {
+        attendanceMap[userKey][dateKey].checkOuts.push(ckOut);
+        attendanceMap[userKey][dateKey].punches.push({ time: ckOut, type: 'OUT' });
+      }
+      if (record.status) attendanceMap[userKey][dateKey].statuses.push(record.status);
+      attendanceMap[userKey][dateKey].workingHours += Number(record.workingHours || 0);
+      attendanceMap[userKey][dateKey].overtime += Number(record.overtime || 0);
     });
 
     // Generate report data in tabular format
@@ -1371,14 +1411,39 @@ const generateGroupAttendanceReport = async (attendanceQuery, start, end, userFi
       dateRange.forEach(date => {
         const userKey = user._id.toString();
         const attendanceRecord = attendanceMap[userKey] && attendanceMap[userKey][date];
-        
+
         if (attendanceRecord) {
+          // Build punches list sorted by time and a display string with all punch times
+          const punches = (attendanceRecord.punches || []).slice().sort((a, b) => {
+            if (!a.time) return -1;
+            if (!b.time) return 1;
+            return a.time.localeCompare(b.time);
+          });
+
+          const timesDisplay = punches.length > 0 ? punches.map(p => p.time).join('\n') : '';
+
+          // Determine earliest checkIn and latest checkOut for backward-compatible fields
+          const earliestIn = (attendanceRecord.checkIns || []).slice().sort()[0] || null;
+          const latestOut = (attendanceRecord.checkOuts || []).slice().sort().reverse()[0] || null;
+
+          const checkInMoment = earliestIn ? moment(earliestIn, 'HH:mm:ss') : null;
+          const checkOutMoment = latestOut ? moment(latestOut, 'HH:mm:ss') : null;
+
+          const workingHours = (checkInMoment && checkOutMoment && checkInMoment.isValid() && checkOutMoment.isValid())
+            ? Number(checkOutMoment.diff(checkInMoment, 'hours', true).toFixed(2))
+            : Number(attendanceRecord.workingHours || 0);
+
+          // Prefer 'present' status if any of recorded statuses include it
+          const status = (attendanceRecord.statuses || []).includes('present') ? 'present' : (attendanceRecord.statuses[0] || 'present');
+
           userAttendance.dailyAttendance[date] = {
-            status: attendanceRecord.status,
-            checkIn: attendanceRecord.checkIn ? moment(attendanceRecord.checkIn.time).format('HH:mm') : '',
-            checkOut: attendanceRecord.checkOut ? moment(attendanceRecord.checkOut.time).format('HH:mm') : '',
-            workingHours: attendanceRecord.workingHours || 0,
-            overtime: attendanceRecord.overtime || 0
+            status,
+            punches,
+            timesDisplay,
+            checkIn: checkInMoment ? checkInMoment.format('HH:mm:ss') : '',
+            checkOut: checkOutMoment ? checkOutMoment.format('HH:mm:ss') : '',
+            workingHours,
+            overtime: Number(attendanceRecord.overtime || 0)
           };
         } else {
           userAttendance.dailyAttendance[date] = {
@@ -1585,16 +1650,40 @@ const generateMySQLGroupAttendanceReport = async (from_date, to_date, division_i
         const dayRecords = attendanceMap[employeeKey] && attendanceMap[employeeKey][date];
         
         if (dayRecords && dayRecords.length > 0) {
-          // Find IN and OUT times
+          // Build punches list from dayRecords and a display string
+          const punches = dayRecords.map(r => ({ time: r.time, type: (r.scan_type || '').toUpperCase() }));
+          punches.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+          const timesDisplay = punches.map(p => p.time).join('\n');
+
+          // Find earliest IN and latest OUT for backward-compatible fields
           const inRecord = dayRecords.find(r => r.scan_type && r.scan_type.toUpperCase() === 'IN');
-          const outRecord = dayRecords.find(r => r.scan_type && r.scan_type.toUpperCase() === 'OUT');
-          
+          let outRecord = [...dayRecords].reverse().find(r => r.scan_type && r.scan_type.toUpperCase() === 'OUT');
+          if (!outRecord) outRecord = dayRecords[dayRecords.length - 1];
+
+          const rawIn = inRecord && inRecord.time ? inRecord.time : null;
+          const rawOut = outRecord && outRecord.time ? outRecord.time : null;
+
+          // Compute working hours using moment when possible
+          let workingHours = 0;
+          try {
+            if (rawIn && rawOut) {
+              const ci = moment(rawIn, 'HH:mm:ss');
+              const co = moment(rawOut, 'HH:mm:ss');
+              if (ci.isValid() && co.isValid()) {
+                workingHours = Number(co.diff(ci, 'hours', true).toFixed(2));
+              }
+            }
+          } catch (e) {
+            workingHours = 0;
+          }
+
           employeeAttendance.dailyAttendance[date] = {
             status: 'present',
-            checkIn: inRecord ? moment(inRecord.time, 'HH:mm:ss').format('HH:mm') : '',
-            checkOut: outRecord ? moment(outRecord.time, 'HH:mm:ss').format('HH:mm') : '',
-            workingHours: inRecord && outRecord ? 
-              moment(outRecord.time, 'HH:mm:ss').diff(moment(inRecord.time, 'HH:mm:ss'), 'hours', true).toFixed(2) : 0,
+            punches,
+            timesDisplay,
+            checkIn: rawIn || '',
+            checkOut: rawOut || '',
+            workingHours,
             overtime: 0
           };
         } else {

@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import usePermission from '../../hooks/usePermission';
 import './ReportGeneration.css';
+import GroupReport from './GroupReport';
+import IndividualReport from './IndividualReport';
 
 const ReportGeneration = () => {
   const [reportType, setReportType] = useState('attendance');
@@ -19,6 +21,23 @@ const ReportGeneration = () => {
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState('');
   const [employeeInfo, setEmployeeInfo] = useState(null);
+  const groupReportRef = useRef(null);
+  const individualReportRef = useRef(null);
+
+  // Return DB-provided time strings unchanged. If a Date or ISO string is provided, format to HH:mm:ss.
+  const ensureSeconds = (timeVal) => {
+    if (!timeVal && timeVal !== 0) return '';
+    if (typeof timeVal === 'string') return timeVal;
+    try {
+      const d = new Date(timeVal);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('en-GB', { hour12: false });
+      }
+    } catch (e) {
+      // fallback
+    }
+    return String(timeVal);
+  };
 
   // permission checks
   const canGenerate = usePermission('reports', 'create');
@@ -35,6 +54,13 @@ const ReportGeneration = () => {
       endDate: today
     });
   }, []);
+
+  // When scope changes to group, clear and block employeeId
+  useEffect(() => {
+    if (reportScope === 'group') {
+      setEmployeeId('');
+    }
+  }, [reportScope]);
 
   const fetchSectionsByDivision = useCallback(async (divId) => {
     try {
@@ -199,12 +225,16 @@ const ReportGeneration = () => {
         apiUrl = 'http://localhost:5000/api/reports/mysql/attendance';
         payload = {
           report_type: reportScope,
-          employee_id: reportScope === 'individual' ? employeeId : '',
-          division_id: reportScope === 'group' ? (divisionId !== 'all' ? divisionId : '') : '',
-          section_id: reportScope === 'group' ? (sectionId !== 'all' ? sectionId : '') : '',
           from_date: dateRange.startDate,
           to_date: dateRange.endDate
         };
+        if (reportScope === 'individual') {
+          payload.employee_id = employeeId;
+        }
+        if (reportScope === 'group') {
+          if (divisionId !== 'all') payload.division_id = divisionId;
+          if (sectionId !== 'all') payload.section_id = sectionId;
+        }
       } else if (reportType === 'meal') {
         // Use MongoDB API for meal reports
         apiUrl = 'http://localhost:5000/api/meal-reports';
@@ -296,9 +326,28 @@ const ReportGeneration = () => {
       setError('No data to export. Please generate a report first.');
       return;
     }
-
     if (format === 'pdf') {
-      printReport();
+      handlePrint();
+    }
+  };
+
+  const handlePrint = () => {
+    if (!reportData || !reportData.data || reportData.data.length === 0) {
+      alert('No data to print. Please generate a report first.');
+      return;
+    }
+    if (reportScope === 'group') {
+      if (groupReportRef.current && typeof groupReportRef.current.print === 'function') {
+        groupReportRef.current.print();
+      } else {
+        alert('Group report print not available.');
+      }
+    } else {
+      if (individualReportRef.current && typeof individualReportRef.current.print === 'function') {
+        individualReportRef.current.print();
+      } else {
+        alert('Individual report print not available.');
+      }
     }
   };
 
@@ -308,27 +357,16 @@ const ReportGeneration = () => {
         ? ['Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items']
         : ['Employee ID', 'Employee Name', 'Date', 'Time', 'Meal Type', 'Location', 'Quantity', 'Items'];
     } else if (reportScope === 'group' && reportData?.reportType === 'group') {
-      // Group attendance report headers: Employee info + dates in timesheet format
-      const headers = ['Emp No', 'Emp Name', 'Meal-Pkt-Mny'];
-      if (reportData.dates) {
-        reportData.dates.forEach(date => {
-          // Format date as "DD-MMM-YY Day" like "30-Jun-25 Mon"
-          const dateObj = new Date(date);
-          const formattedDate = dateObj.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: '2-digit'
-          }).replace(/\//g, '-') + ' ' + dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-          headers.push(formattedDate);
-        });
-      }
-      return headers;
+        // For group scope we want a flat punch-list style table similar to individual reports.
+        return ['Emp No', 'Emp Name', 'Meal-Pkt-Mny', 'Punch Date', 'Punch Time', 'Function', 'Event Description'];
     } else {
       // Individual attendance report headers to match your reference exactly
       return ['Emp No', 'Emp Name', 'Meal-Pkt-Mny', 'Punch Date', 'Punch Time', 'Function', 'Event Description'];
     }
   };
 
+  // formatRow returns an array of cell values for a single punch/record
+  // If called with an attendance 'punch' object, it returns the standard row.
   const formatRow = (record) => {
     if (reportType === 'meal') {
       const mealTime = new Date(record.mealTime || record.meal_time).toLocaleTimeString();
@@ -339,40 +377,27 @@ const ReportGeneration = () => {
         ? [record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items]
         : [record.employee_id || record.user?.employeeId, record.employee_name || `${record.user?.firstName} ${record.user?.lastName}`, record.date || record.meal_date, mealTime, record.mealType || record.meal_type, record.location || 'Cafeteria', quantity, items];
     } else if (reportScope === 'group' && reportData?.reportType === 'group') {
-      // Group attendance report in timesheet format like your reference
-      const row = [
-        record.employeeId, // Emp No
-        record.employeeName, // Emp Name
-        'I' // Meal-Pkt-Mny (always "I" for attendance records)
+      // For group reports we may be formatting individual punch records.
+      // The incoming `record` in the group-preview mapping will be a punch-like object
+      // if we transformed the server response earlier. We expect fields similar to individual records.
+      // Format: Emp No, Emp Name, Meal-Pkt-Mny, Punch Date, Punch Time, Function, Event Description
+      const punchDateObj = record.date_ ? new Date(record.date_) : (record.punchDate ? new Date(record.punchDate) : null);
+      const formattedDate = punchDateObj && !isNaN(punchDateObj.getTime())
+        ? (punchDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/\//g, '-') + ' ' + punchDateObj.toLocaleDateString('en-US', { weekday: 'short' }))
+        : (record.punchDate || record.date_ || '');
+
+      const functionCode = record.scan_type?.toUpperCase() === 'IN' ? 'F1-0' : 'F4-0';
+      const eventDescription = `${record.scan_type?.toUpperCase() === 'IN' ? 'ON' : 'OFF'}Granted(ID & F tally plan COM0002)`;
+
+      return [
+        record.employee_ID || record.employeeId || record.emp_no || record.empNo || '',
+        record.employee_name || record.employeeName || record.name || 'Unknown',
+        'I',
+        formattedDate,
+        ensureSeconds(record.time_ || record.time || record.punchTime || ''),
+        functionCode,
+        eventDescription
       ];
-      
-      if (reportData.dates && record.dailyAttendance) {
-        reportData.dates.forEach(date => {
-          const dayData = record.dailyAttendance[date];
-          if (dayData && dayData.status === 'present') {
-            // Show check-in and check-out times vertically (line by line)
-            const inTime = dayData.checkIn || '';
-            const outTime = dayData.checkOut || '';
-            
-            let timeDisplay = '';
-            if (inTime && outTime) {
-              timeDisplay = `${inTime}\n${outTime}`;
-            } else if (inTime) {
-              timeDisplay = inTime;
-            } else if (outTime) {
-              timeDisplay = outTime;
-            } else {
-              timeDisplay = '-';
-            }
-            
-            row.push(timeDisplay);
-          } else {
-            row.push('-');
-          }
-        });
-      }
-      
-      return row;
     } else {
       // Individual attendance report format to match your reference exactly
       // Format: Emp No, Emp Name, Meal-Pkt-Mny, Punch Date, Punch Time, Function, Event Description
@@ -396,7 +421,7 @@ const ReportGeneration = () => {
         record.employee_name || record.employeeName || 'Unknown', // Emp Name
         'I', // Meal-Pkt-Mny (always "I" for attendance records as shown in your reference)
         formattedDate, // Punch Date
-        record.time_, // Punch Time
+  ensureSeconds(record.time_), // Punch Time
         functionCode, // Function
         eventDescription // Event Description
       ];
@@ -409,99 +434,403 @@ const ReportGeneration = () => {
       return;
     }
     
-    // Create a new window for printing with formatted content
-    const printWindow = window.open('', '_blank');
-    const printContent = generatePrintContent();
-    
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+  // Create a new window for printing with formatted content, avoid about:blank in URL
+  const printWindow = window.open(' ', '', 'width=900,height=700');
+  const printContent = generatePrintContent();
+  printWindow.document.open();
+  printWindow.document.write(printContent);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  printWindow.close();
   };
 
   const generatePrintContent = () => {
     const reportTitle = reportType === 'attendance' ? 'History Transaction Report' : 'Meal Consumption Report';
-    const subtitle = reportType === 'attendance' ? 'All Granted(ID & FP) Records' : 'All Meal Records';
+    // const subtitle = reportType === 'attendance' ? 'All Granted(ID & FP) Records' : 'All Meal Records';
     
     let employeeHeader = '';
-    if (reportScope === 'individual' && employeeInfo) {
+    if (reportScope === 'individual' && (employeeInfo || employeeId)) {
+      const empNoVal = (employeeInfo && (employeeInfo.employee_id || employeeInfo.employee_ID)) || employeeId || '';
+      const empNameVal = (employeeInfo && (employeeInfo.name || employeeInfo.employee_name || employeeInfo.employeeName)) || '';
       employeeHeader = `
-        <div style="margin-bottom: 20px;">
-          <div><strong>Emp No:</strong> ${employeeInfo.employee_id || employeeId}</div>
-          <div><strong>Emp Name:</strong> ${employeeInfo.name || 'N/A'}</div>
-        </div>
+        <table style="margin-bottom: 12px; border-collapse: collapse;">
+          <tr>
+            <td style="vertical-align: top; padding-right: 8px; font-weight: bold; width: 90px;">Emp No :</td>
+            <td style="vertical-align: top;">${empNoVal}</td>
+          </tr>
+          <tr>
+            <td style="vertical-align: top; padding-right: 8px; font-weight: bold;">Emp Name :</td>
+            <td style="vertical-align: top;">${empNameVal}</td>
+          </tr>
+          <tr>
+            <td style="vertical-align: top; padding-right: 8px; font-weight: bold;">Date From :</td>
+            <td style="vertical-align: top;">${dateRange.startDate} &nbsp; To : &nbsp; ${dateRange.endDate}</td>
+          </tr>
+        </table>
       `;
     }
 
-    const headers = getHeaders();
-    const tableRows = reportData.data.map(record => {
-      const row = formatRow(record);
-      return `<tr>${row.map(cell => `<td style="border: 1px solid #000; padding: 4px 6px; text-align: center; font-size: 10px; white-space: pre-line;">${cell}</td>`).join('')}</tr>`;
-    }).join('');
+  const headers = getHeaders();
+  // Rows per printed page. Use a sensible default for individual reports and keep
+  // a larger capacity for group reports. Make the individual value easy to tweak.
+  const INDIVIDUAL_ROWS_PER_PAGE = 40; // increased to show more records per individual printed page
+  const GROUP_ROWS_PER_PAGE = 32;
+  const rowsPerPage = reportScope === 'individual' ? INDIVIDUAL_ROWS_PER_PAGE : GROUP_ROWS_PER_PAGE;
+  // Build flattened punches array (date-first) so print matches the group preview
+  const punches = [];
+  // Determine date order and flatten depending on report shape
+  let dateOrder = [];
 
+  if (Array.isArray(reportData.dates) && reportData.dates.length > 0) {
+    dateOrder = reportData.dates;
+  } else if (reportScope === 'individual') {
+    // reportData.data for individual reports is expected to be a flat array of punch/record objects.
+    // Collect unique dates from those records and build punches directly.
+    const dateSet = new Set();
+    (Array.isArray(reportData.data) ? reportData.data : []).forEach(p => {
+      const d = p.date || p.punchDate || p.date_;
+      if (d) dateSet.add(d);
+    });
+    dateOrder = Array.from(dateSet).sort((a, b) => new Date(a) - new Date(b));
+
+    // For each date, push all punches that belong to that date
+    dateOrder.forEach(date => {
+      (Array.isArray(reportData.data) ? reportData.data : []).forEach(p => {
+        const pd = p.date || p.punchDate || p.date_;
+        if (String(pd) !== String(date)) return;
+        const inferredType = (p && (p.scan_type || p.type || p.direction))
+          ? (p.scan_type || p.type || p.direction)
+          : 'IN';
+        punches.push({
+          employee_ID: p.employee_ID || p.employeeId || p.emp_no || p.empNo || '',
+          employee_name: p.employee_name || p.employeeName || p.name || '',
+          date_: date,
+          time_: p.time || p.punchTime || p.time_ || (typeof p === 'string' ? p : ''),
+          scan_type: inferredType
+        });
+      });
+    });
+  } else {
+    // Group-shaped report: each element is an employee with punches/dailyAttendance
+    const dateSet = new Set();
+    reportData.data.forEach(emp => {
+      if (Array.isArray(emp.punches)) {
+        emp.punches.forEach(p => {
+          const d = p.date || p.punchDate || p.date_;
+          if (d) dateSet.add(d);
+        });
+      }
+      if (emp.dailyAttendance) {
+        Object.keys(emp.dailyAttendance).forEach(k => dateSet.add(k));
+      }
+    });
+    dateOrder = Array.from(dateSet).sort((a, b) => new Date(a) - new Date(b));
+
+    dateOrder.forEach(date => {
+      reportData.data.forEach(emp => {
+        if (Array.isArray(emp.punches) && emp.punches.length > 0) {
+          const dayPunches = emp.punches.filter(p => {
+            const pd = p.date || p.punchDate || p.date_;
+            return String(pd) === String(date);
+          });
+          dayPunches.forEach((p, pIndex) => {
+            const inferredType = (p && (p.scan_type || p.type || p.direction))
+              ? (p.scan_type || p.type || p.direction)
+              : (pIndex % 2 === 0 ? 'IN' : 'OUT');
+            punches.push({
+              employee_ID: emp.employeeId || emp.employee_ID || emp.emp_no || emp.empNo,
+              employee_name: emp.employeeName || emp.employee_name || emp.name,
+              date_: date,
+              time_: p.time || p.punchTime || p.time_ || (typeof p === 'string' ? p : ''),
+              scan_type: inferredType
+            });
+          });
+        } else if (emp.dailyAttendance && emp.dailyAttendance[date]) {
+          const dayData = emp.dailyAttendance[date];
+          if (Array.isArray(dayData.punches) && dayData.punches.length > 0) {
+            dayData.punches.forEach((p, pIndex) => {
+              const inferredType = (p && (p.scan_type || p.type || p.direction))
+                ? (p.scan_type || p.type || p.direction)
+                : (pIndex % 2 === 0 ? 'IN' : 'OUT');
+              punches.push({
+                employee_ID: emp.employeeId || emp.employee_ID || emp.emp_no || emp.empNo,
+                employee_name: emp.employeeName || emp.employee_name || emp.name,
+                date_: date,
+                time_: p.time || (typeof p === 'string' ? p : ''),
+                scan_type: inferredType
+              });
+            });
+          } else {
+            if (dayData.checkIn) {
+              punches.push({
+                employee_ID: emp.employeeId || emp.employee_ID || emp.emp_no || emp.empNo,
+                employee_name: emp.employeeName || emp.employee_name || emp.name,
+                date_: date,
+                time_: dayData.checkIn,
+                scan_type: 'IN'
+              });
+            }
+            if (dayData.checkOut) {
+              punches.push({
+                employee_ID: emp.employeeId || emp.employee_ID || emp.emp_no || emp.empNo,
+                employee_name: emp.employeeName || emp.employee_name || emp.name,
+                date_: date,
+                time_: dayData.checkOut,
+                scan_type: 'OUT'
+              });
+            }
+          }
+        }
+      });
+    });
+  }
+
+  // Sort punches by date, employee, time, with IN before OUT for ties
+  punches.sort((a, b) => {
+    const da = new Date(a.date_ || '');
+    const db = new Date(b.date_ || '');
+    if (!isNaN(da.getTime()) && !isNaN(db.getTime())) {
+      if (da < db) return -1;
+      if (da > db) return 1;
+    } else {
+      if ((a.date_ || '') < (b.date_ || '')) return -1;
+      if ((a.date_ || '') > (b.date_ || '')) return 1;
+    }
+    const empA = String(a.employee_ID || '');
+    const empB = String(b.employee_ID || '');
+    if (empA < empB) return -1;
+    if (empA > empB) return 1;
+    const ta = a.time_ || '';
+    const tb = b.time_ || '';
+    if (ta < tb) return -1;
+    if (ta > tb) return 1;
+    const aIsIn = (a.scan_type || '').toUpperCase() === 'IN';
+    const bIsIn = (b.scan_type || '').toUpperCase() === 'IN';
+    if (aIsIn && !bIsIn) return -1;
+    if (!aIsIn && bIsIn) return 1;
+    return 0;
+  });
+
+  // Build sortedRecords compatible with later print rendering
+  const sortedRecords = punches.map((p, idx) => {
+    const rec = { ...p };
+    // build human readable punch date key used for display grouping
+    const punchDate = new Date(p.date_);
+    rec._punchDateKey = !isNaN(punchDate.getTime())
+      ? (punchDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/\//g, '-') + ' ' + punchDate.toLocaleDateString('en-US', { weekday: 'short' }))
+      : p.date_;
+    return rec;
+  });
+
+  // For print, suppress duplicate Emp/Name/Meal-Pkt-Mny/Punch Date similar to preview
+  // Build pages so every new date starts on a fresh page
+  const pages = (() => {
+    const pagesOut = [];
+  let currentPage = [];
+  let lastKey = null; // empId|date
+  let lastDateHeader = null;
+  let currentCount = 0;
+  // For individual reports, count distinct dates per page (user requested 8 dates/page)
+  let currentDateCount = 0;
+
+    const pushPage = () => {
+      if (currentPage.length > 0) {
+        pagesOut.push(currentPage.slice());
+        currentPage = [];
+        currentCount = 0;
+        lastKey = null; // reset duplicate suppression at page boundary
+      }
+    };
+
+    sortedRecords.forEach(record => {
+      const dateHeader = record._punchDateKey || (record.date_ || '');
+      // If date changed, insert a date header. For group reports we ensure the header
+      // sits at the top of a new page; for individual reports we just inject the header
+      // without forcing a page break.
+      if (lastDateHeader !== dateHeader) {
+        lastDateHeader = dateHeader;
+        if ((reportScope === 'group' || reportData.reportType === 'group') && currentCount > 0) {
+          // finish current page and start a new one so date header sits at top (group only)
+          pushPage();
+        }
+        // inject date header row on the current page
+        currentPage.push(`<tr style="background: #e9ecef;"><td colspan="7" style="font-weight: bold; font-size: 11px; text-align: left; padding: 8px 12px; border: 1px solid #000;">Date: ${dateHeader}</td></tr>`);
+        currentCount++;
+        // If individual report, increment the distinct date counter and check page limit
+        if (reportScope === 'individual') {
+          currentDateCount++;
+        }
+        lastKey = null; // reset duplicate suppression when date header changes
+      }
+
+      const row = formatRow(record);
+      const empIdVal = record.employee_ID || record.employeeId || record.emp_no || record.empNo || '';
+      const dateVal = dateHeader;
+      const key = `${empIdVal}||${dateVal}`;
+      if (lastKey === key) {
+        if (row.length > 0) row[0] = '';
+        if (row.length > 1) row[1] = '';
+        if (row.length > 2) row[2] = '';
+        if (row.length > 3) row[3] = '';
+      } else {
+        lastKey = key;
+      }
+
+  currentPage.push(`<tr>${row.map((cell, ci) => `<td style="border: 1px solid #000; padding: 4px 6px; text-align: left; font-size: 10px; white-space: pre-line;">${ci === 0 ? '<strong>' + cell + '</strong>' : cell}</td>`).join('')}</tr>`);
+      currentCount++;
+
+      // If page capacity reached, push page and continue
+      if (reportScope === 'individual') {
+        // For individual scope, paginate by distinct date headers: 8 dates per page
+        const DATES_PER_PAGE = 8;
+        if (currentDateCount >= DATES_PER_PAGE) {
+          pushPage();
+          currentDateCount = 0;
+        }
+      } else {
+        if (currentCount >= rowsPerPage) {
+          pushPage();
+        }
+      }
+    });
+
+    // push remaining
+    if (currentPage.length > 0) pagesOut.push(currentPage.slice());
+    return pagesOut;
+  })();
+  const totalPages = pages.length || 1;
+
+    // Subtitle for attendance report
+    const subtitle = reportType === 'attendance' ? 'All Granted(ID & FP) Records' : 'All Meal Records';
+    // Employee info for print
+    let empNo = '';
+    let empName = '';
+    if (reportScope === 'individual' && employeeInfo) {
+      empNo = employeeInfo.employee_id || employeeInfo.employee_ID || employeeId || '';
+      empName = employeeInfo.name || employeeInfo.employee_name || employeeInfo.employeeName || '';
+    } else if (reportData && reportData.data && reportData.data.length > 0) {
+      // Try to extract from first record for group reports
+      const first = reportData.data[0];
+      empNo =
+        first.employee_id ||
+        first.employee_ID ||
+        first.emp_no ||
+        first.empNo ||
+        first.empid ||
+        first.employeeId ||
+        '';
+      empName =
+        first.employee_name ||
+        first.employeeName ||
+        first.emp_name ||
+        first.name ||
+        '';
+    }
+
+    function renderPage(pageNum) {
+  const pageRows = (pages[pageNum - 1] || []).join('');
+      // Common header for each page
+      // Add signature lines only on the last page
+      const isLastPage = pageNum === totalPages;
+      return `
+        <div class="common-header" style="page-break-before: ${pageNum > 1 ? 'always' : 'auto'}; width: 100%;">
+          <!-- Reuse app header markup so printed header matches .report-header styles -->
+          <div class="report-header" style="padding:8px 0; margin-bottom:6px;">
+            <div class="header-content" style="text-align:left; display:flex; justify-content:space-between; align-items:flex-start;">
+              <div style="max-width:70%;">
+                <h1 style="margin:0; display:flex; align-items:center; gap:8px; font-family: 'Courier New', monospace;">${reportTitle}</h1>
+                <div class="header-subtitle" style="font-size:11px; margin-top:4px;"><strong>${subtitle}</strong></div>
+                <!-- spacer to create a blank line between subtitle and date-range -->
+                <div style="height:8px;">&nbsp;</div>
+                ${reportScope === 'individual' ? (employeeHeader || `<div class="date-range" style="margin-top:6px; font-size:11px;"><strong>Date From :</strong> ${dateRange.startDate} <strong>To :</strong> ${dateRange.endDate}</div>`) : `<div class="date-range" style="margin-top:6px; font-size:11px;"><strong>Date From :</strong> ${dateRange.startDate} <strong>To :</strong> ${dateRange.endDate}</div>`}
+              </div>
+              <div style="text-align:left; font-size:10px;" class="print-meta">
+                <div style="font-size:10px;">Printed Date : ${new Date().toLocaleDateString()}</div>
+                <div style="font-size:10px;">Printed Time : ${new Date().toLocaleTimeString()}</div>
+                <div style="font-size:10px;">Page ${pageNum} of ${totalPages}</div>
+              </div>
+            </div>
+          </div>
+          <div class="header-content" style="max-width:1200px; margin:0 auto; padding:0 12px;">
+            <table style="width:100%; border-collapse: collapse;">
+              <thead>
+                <tr>${headers.map(header => `<th style="font-size: 11px; padding: 4px 2px; border: 0.5px solid #000; text-align: left;">${header === 'Emp No' ? '<strong>' + header + '</strong>' : header}</th>`).join('')}</tr>
+              </thead>
+              <tbody>
+                ${pageRows}
+              </tbody>
+            </table>
+          </div>
+          ${isLastPage ? `
+          <div style="margin-top: 60px; width: 100%;">
+            <table style="width:100%; border-collapse: collapse; border: none;">
+              <tbody>
+                <tr>
+                  <td style="width:15%; vertical-align: middle; padding:6px 8px; border: none; font-size:11px; white-space: nowrap;">Date</td>
+                  <td style="width:35%; vertical-align: middle; padding:6px 8px; border: none; white-space: nowrap;"><span style="display:inline-block; font-family: 'Courier New', monospace; font-size:9px; letter-spacing:1px; line-height:1;">....................</span></td>
+                  <td style="width:15%; vertical-align: middle; padding:6px 8px; border: none; font-size:11px; white-space: nowrap;">Date</td>
+                  <td style="width:35%; vertical-align: middle; padding:6px 8px; border: none; white-space: nowrap;"><span style="display:inline-block; font-family: 'Courier New', monospace; font-size:9px; letter-spacing:1px; line-height:1;">....................</span></td>
+                </tr>
+                <tr>
+                  <td style="vertical-align: middle; padding:6px 8px; border: none; font-size:11px; white-space: nowrap;">Authorized Signature 1</td>
+                  <td style="vertical-align: middle; padding:6px 8px; border: none; white-space: nowrap;"><span style="display:inline-block; font-family: 'Courier New', monospace; font-size:9px; letter-spacing:1px; line-height:1;">....................</span></td>
+                  <td style="vertical-align: middle; padding:6px 8px; border: none; font-size:11px; white-space: nowrap;">Authorized Signature 2</td>
+                  <td style="vertical-align: middle; padding:6px 8px; border: none; white-space: nowrap;"><span style="display:inline-block; font-family: 'Courier New', monospace; font-size:9px; letter-spacing:1px; line-height:1;">....................</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          ` : ''}
+        </div>
+      `;
+    }
     return `
       <!DOCTYPE html>
       <html>
       <head>
         <title>${reportTitle}</title>
         <style>
-          body { font-family: 'Courier New', monospace; font-size: 11px; margin: 20px; }
-          .header { text-align: center; margin-bottom: 20px; }
-          .report-title { font-weight: bold; font-size: 14px; margin-bottom: 5px; }
-          .report-subtitle { font-size: 11px; margin-bottom: 15px; }
-          .date-range { margin-bottom: 20px; }
+          /* Minimal header styles copied from ReportGeneration.css but adjusted for print: white background and black text */
+          .report-header { background: #ffffff; padding: 8px 0; margin-bottom: 6px; }
+          .header-content { max-width: 1200px; margin: 0 auto; padding: 0 12px; text-align: left; position: relative; z-index: 2; }
+          .header-content h1 { font-weight: 700; font-size: 14px; margin: 0; color: #000; }
+          .header-subtitle { font-size: 11px; margin-top: 4px; color: #000; }
+          .employee-info, .date-range { font-size: 11px; margin-top: 6px; color: #000; }
+          .common-header { width: 100%; }
+          body { font-family: 'Courier New', monospace; font-size: 11px; margin: 20px; padding: 24px 24px 0 24px; }
+          .common-header { width: 100%; }
+          .print-header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0; }
+          .print-header-left { text-align: left; }
+          .print-header-right { text-align: left; font-size: 10px; }
+          .report-title { font-weight: bold; font-size: 14px; margin-bottom: 6px; }
+          .report-subtitle { font-size: 11px; margin-bottom: 8px; }
+          .emp-info { font-size: 11px; margin-bottom: 6px; }
+          .date-range { font-size: 11px; margin-bottom: 10px; }
+          .print-meta { font-size: 10px; }
           table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          th, td { border: 1px solid #000; padding: 4px 6px; text-align: center; }
-          th { background: #f5f5f5; font-weight: bold; font-size: 10px; }
-          td { font-size: 9px; white-space: pre-line; }
-          .signature-section { margin-top: 50px; display: flex; justify-content: space-between; }
-          .signature-block { text-align: center; min-width: 200px; }
-          .signature-line { border-bottom: 1px solid #000; height: 40px; margin-bottom: 5px; }
+          th, td { border: 0.5px solid #000; padding: 4px 6px; text-align: left; }
+          th { background: #f5f5f5; font-weight: bold; font-size: 11px; }
+          td { font-size: 10px; white-space: pre-line; }
           @media print {
             @page { margin: 0.5in; size: landscape; }
             body { margin: 0; }
-            table { font-size: 8px; }
+            table { font-size: 11px; }
             th, td { padding: 2px 4px; }
+            thead { display: table-header-group !important; }
+            /* Hide browser print header/footer */
+            @page {
+              margin-top: 0;
+              margin-bottom: 0;
+              margin-left: 0;
+              margin-right: 0;
+            }
+            body::before, body::after { display: none !important; }
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="report-title">${reportTitle}</div>
-          <div class="report-subtitle">${subtitle}</div>
-          <div style="text-align: right; font-size: 10px;">
-            <div>Printed Date: ${new Date().toLocaleDateString()}</div>
-            <div>Printed Time: ${new Date().toLocaleTimeString()}</div>
-            <div>Page 1 of 1</div>
-          </div>
-        </div>
-        
-        ${employeeHeader}
-        
-        <div class="date-range">
-          <strong>Date From:</strong> ${dateRange.startDate} <strong>To:</strong> ${dateRange.endDate}
-        </div>
-        
-        <table>
-          <thead>
-            <tr>${headers.map(header => `<th style="font-size: 9px; padding: 4px 2px;">${header}</th>`).join('')}</tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div class="signature-section">
-          <div class="signature-block">
-            <div class="signature-line"></div>
-            <div>Authorized Signature</div>
-          </div>
-          <div class="signature-block">
-            <div class="signature-line"></div>
-            <div>Employee Signature</div>
-          </div>
-        </div>
+        ${Array.from({length: totalPages}, (_, i) => renderPage(i + 1)).join('')}
       </body>
       </html>
     `;
@@ -523,7 +852,7 @@ const ReportGeneration = () => {
       {/* Report Configuration Form */}
       <div className="report-config">
         <form onSubmit={handleSubmit} className="config-form">
-          <div className="form-grid">
+          <div className="form-grid" style={{display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '16px', alignItems: 'end'}}>
             {/* Report Type Selection */}
             <div className="form-group">
               <label htmlFor="reportType">
@@ -558,70 +887,68 @@ const ReportGeneration = () => {
               </select>
             </div>
 
-            {/* Employee ID (for individual reports) */}
-            {reportScope === 'individual' && (
-              <div className="form-group">
-                <label htmlFor="employeeId">
-                  <i className="bi bi-person-badge"></i>
-                  Employee ID
-                </label>
-                <input
-                  type="text"
-                  id="employeeId"
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  className="form-control"
-                  placeholder="Enter employee ID"
-                  required
-                />
-              </div>
-            )}
+            {/* Employee ID - always visible, required only for individual scope */}
+            <div className="form-group" style={{gridColumn: 'span 1'}}>
+              <label htmlFor="employeeId">
+                <i className="bi bi-person-badge"></i>
+                Employee ID
+              </label>
+              <input
+                type="text"
+                id="employeeId"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                className="form-control"
+                placeholder="Enter employee ID"
+                required={reportScope === 'individual'}
+                disabled={reportScope === 'group'}
+                aria-disabled={reportScope === 'group'}
+                title={reportScope === 'group' ? 'Disabled for Group reports' : 'Enter employee ID'}
+                style={{ cursor: reportScope === 'group' ? 'not-allowed' : 'text' }}
+              />
+            </div>
 
-            {/* Division Selection (for group reports) */}
-            {reportScope === 'group' && (
-              <div className="form-group">
-                <label htmlFor="divisionId">
-                  <i className="bi bi-building"></i>
-                  Division
-                </label>
-                <select
-                  id="divisionId"
-                  value={divisionId}
-                  onChange={(e) => setDivisionId(e.target.value)}
-                  className="form-control"
-                >
-                  <option value="all">All Divisions</option>
-                  {(Array.isArray(divisions) ? divisions : []).map(division => (
-                    <option key={division._id || division.id} value={division._id || division.id}>
-                      {division.name || division.division_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {/* Division - always visible, enabled only for group scope */}
+            <div className="form-group" style={{gridColumn: 'span 1'}}>
+              <label htmlFor="divisionId">
+                <i className="bi bi-building"></i>
+                Division
+              </label>
+              <select
+                id="divisionId"
+                value={divisionId}
+                onChange={(e) => setDivisionId(e.target.value)}
+                className="form-control"
+              >
+                <option value="all">All Divisions</option>
+                {(Array.isArray(divisions) ? divisions : []).map(division => (
+                  <option key={division._id || division.id} value={division._id || division.id}>
+                    {division.name || division.division_name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            {/* Section Selection (for group reports) */}
-            {reportScope === 'group' && (
-              <div className="form-group">
-                <label htmlFor="sectionId">
-                  <i className="bi bi-diagram-3"></i>
-                  Section
-                </label>
-                <select
-                  id="sectionId"
-                  value={sectionId}
-                  onChange={(e) => setSectionId(e.target.value)}
-                  className="form-control"
-                >
-                  <option value="all">All Sections</option>
-                  {(Array.isArray(sections) ? sections : []).map(section => (
-                    <option key={section._id || section.id} value={section._id || section.id}>
-                      {section.name || section.section_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {/* Section - always visible, enabled only for group scope */}
+            <div className="form-group" style={{gridColumn: 'span 1'}}>
+              <label htmlFor="sectionId">
+                <i className="bi bi-diagram-3"></i>
+                Section
+              </label>
+              <select
+                id="sectionId"
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                className="form-control"
+              >
+                <option value="all">All Sections</option>
+                {(Array.isArray(sections) ? sections : []).map(section => (
+                  <option key={section._id || section.id} value={section._id || section.id}>
+                    {section.name || section.section_name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Date Range */}
             <div className="form-group">
@@ -656,7 +983,7 @@ const ReportGeneration = () => {
           </div>
 
           {/* Generate Button */}
-          <div className="form-actions">
+          <div className="form-actions" style={{ marginBottom: '40px', display: 'flex', justifyContent: 'center' }}>
             <button
               type="submit"
               disabled={loading || !canGenerate}
@@ -692,136 +1019,84 @@ const ReportGeneration = () => {
       ) ? (
         <div className="report-results">
           <div className="results-header">
-            <h3>
-              <i className="bi bi-file-earmark-check"></i>
-              Report Generated Successfully
-            </h3>
-            <div className="report-meta">
-              <span className="record-count">
-                <i className="bi bi-list-ol"></i>
-                {reportData.reportType === 'group' 
-                  ? `${reportData.data?.length || 0} employees found`
-                  : `${reportData.data?.length || 0} records found`
-                }
-              </span>
-              <span className="generated-time">
-                <i className="bi bi-clock"></i>
-                Generated at {new Date().toLocaleString()}
-              </span>
-            </div>
-          </div>
-
-          {/* Export and Print Actions */}
-          <div className="results-actions">
-            <div className="action-group">
-              <h4>
-                <i className="bi bi-download"></i>
-                Export Options
-              </h4>
-              <div className="action-buttons">
-                <button
-                  onClick={() => exportReport('pdf')}
-                  className="btn btn-outline-primary"
-                >
-                  <i className="bi bi-file-earmark-pdf"></i>
-                  Print PDF
-                </button>
+            <div className="filter-summary attractive-summary-card" style={{
+              background: '#fff',
+              border: '1px solid #e0e0e0',
+              borderRadius: '8px',
+              padding: '18px 28px 16px 28px',
+              color: '#222',
+              fontFamily: 'Segoe UI, Arial, sans-serif',
+              fontSize: '1.05rem',
+              margin: '0 auto 18px auto',
+              boxShadow: '0 2px 8px 0 rgba(80,80,120,0.06)',
+              maxWidth: '98vw',
+              fontWeight: 500
+            }}>
+              <div style={{fontWeight: 800, fontSize: '1.25rem', marginBottom: 10, letterSpacing: '0.2px'}}>Report Filter Summary</div>
+              <div style={{display: 'flex', flexWrap: 'wrap', gap: '32px 48px', marginBottom: 6}}>
+                <span>Type: <b>{reportType === 'attendance' ? 'Attendance Report' : 'Meal Report'}</b></span>
+                <span>Scope: <b>{reportScope === 'group' ? 'Group' : 'Individual'}</b></span>
+                {reportScope === 'individual' && (
+                  <span>Employee ID: <b>{employeeId || (employeeInfo && (employeeInfo.employee_id || employeeInfo.id)) || 'N/A'}</b></span>
+                )}
+                {reportScope === 'group' && (
+                  <>
+                    <span>Division: <b>{divisionId === 'all' ? 'All' : (divisions.find(d => d._id === divisionId || d.id === divisionId)?.name || divisionId)}</b></span>
+                    <span>Section: <b>{sectionId === 'all' ? 'All' : (sections.find(s => s._id === sectionId || s.id === sectionId)?.name || sectionId)}</b></span>
+                  </>
+                )}
+              </div>
+              <div style={{display: 'flex', flexWrap: 'wrap', gap: '32px 48px', borderTop: '1px solid #eee', paddingTop: 8}}>
+                <span>Date Range: <b>{dateRange.startDate} to {dateRange.endDate}</b></span>
+                <span>{reportData.reportType === 'group' ? 'Employees Found:' : 'Records Found:'} <b>{reportData.data?.length || 0}</b></span>
+                <span style={{color: '#666', fontWeight: 400, fontSize: '0.98rem', marginLeft: 'auto'}}>Generated at {new Date().toLocaleString()}</span>
               </div>
             </div>
           </div>
 
-          {/* Data Preview */}
-          <div className="data-preview">
-            <h4>
-              <i className="bi bi-table"></i>
+          {/* Data Preview + Export Row */}
+          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '18px', marginBottom: '8px'}}>
+            <div style={{display: 'flex', alignItems: 'center', fontWeight: 600, fontSize: '1.15rem'}}>
+              <i className="bi bi-table" style={{marginRight: 10, marginLeft: 12, fontSize: '1.2rem'}}></i>
               Data Preview
-            </h4>
+            </div>
+            <div className="action-group" style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+              <span style={{fontWeight: 600, fontSize: '1.15rem', display: 'flex', alignItems: 'center', marginLeft: 12}}>
+                <i className="bi bi-download" style={{marginRight: 6, fontSize: '1.2rem'}}></i>
+                Export Options
+              </span>
+              <button
+                onClick={() => exportReport('pdf')}
+                className="btn btn-outline-primary"
+                style={{marginLeft: 8, marginRight: 18, display: 'flex', alignItems: 'center', fontWeight: 500, fontSize: '1rem'}}
+              >
+                <i className="bi bi-file-earmark-pdf" style={{marginRight: 5, fontSize: '1.1rem'}}></i>
+                Print PDF
+              </button>
+            </div>
+          </div>
+          <div className="data-preview">
             <div className="table-responsive">
-              <table className="table table-striped table-hover">
-                <thead>
-                  <tr>
-                    {getHeaders().map((header, index) => (
-                      <th 
-                        key={index} 
-                        scope="col"
-                        style={{
-                          textAlign: 'center',
-                          fontSize: reportScope === 'group' ? '11px' : '12px',
-                          padding: '8px 4px',
-                          backgroundColor: '#f8f9fa',
-                          border: '1px solid #dee2e6',
-                          minWidth: reportScope === 'individual' ? 
-                            (index === 0 ? '80px' : index === 1 ? '150px' : index === 2 ? '60px' : '100px') :
-                            reportScope === 'group' ? 
-                            (index === 0 ? '80px' : index === 1 ? '150px' : index === 2 ? '60px' : '90px') :
-                            (index < 4 ? '120px' : '80px')
-                        }}
-                      >
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportData.reportType === 'group' ? (
-                    reportData.data.slice(0, 10).map((record, index) => {
-                      const row = formatRow(record);
-                      return (
-                        <tr key={index}>
-                          {row.map((cell, cellIndex) => (
-                            <td 
-                              key={cellIndex}
-                              style={{
-                                whiteSpace: 'pre-line',
-                                textAlign: cellIndex === 0 || cellIndex === 2 ? 'center' : 
-                                          cellIndex === 1 ? 'left' : 'center',
-                                fontSize: '11px',
-                                padding: '4px 6px',
-                                verticalAlign: 'middle',
-                                border: '1px solid #dee2e6'
-                              }}
-                            >
-                              {cell}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    reportData.data.slice(0, 10).map((record, index) => {
-                      const row = formatRow(record);
-                      return (
-                        <tr key={index}>
-                          {row.map((cell, cellIndex) => (
-                            <td 
-                              key={cellIndex}
-                              style={{
-                                textAlign: cellIndex === 0 || cellIndex === 2 ? 'center' : 
-                                          cellIndex === 1 ? 'left' : 'center',
-                                fontSize: '11px',
-                                padding: '4px 6px',
-                                border: '1px solid #dee2e6'
-                              }}
-                            >
-                              {cell}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-              {((reportData.reportType === 'group' && reportData.data.length > 10) || 
-                (reportData.data && reportData.data.length > 10)) && (
-                <p className="preview-note">
-                  <i className="bi bi-info-circle"></i>
-                  Showing first 10 records of {reportData.reportType === 'group' 
-                    ? reportData.data.length 
-                    : reportData.data.length} total records.
-                  Use print function to access all data.
-                </p>
-                )}
+              {reportScope === 'group' ? (
+                <GroupReport
+                  ref={groupReportRef}
+                  reportData={reportData}
+                  getHeaders={getHeaders}
+                  formatRow={formatRow}
+                  reportType={reportType}
+                  dateRange={dateRange}
+                />
+              ) : (
+                <IndividualReport
+                  ref={individualReportRef}
+                  reportData={reportData}
+                  getHeaders={getHeaders}
+                  formatRow={formatRow}
+                  reportType={reportType}
+                  dateRange={dateRange}
+                  employeeInfo={employeeInfo}
+                />
+              )}
             </div>
           </div>
         </div>
