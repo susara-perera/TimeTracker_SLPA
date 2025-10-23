@@ -165,6 +165,9 @@ app.use('/api/permissions', require('./routes/permission'));
 =======
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/subsections', require('./routes/subSection'));
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
 // Serve static files in production

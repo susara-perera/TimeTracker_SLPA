@@ -43,7 +43,12 @@ const ReportGeneration = () => {
     try {
       const token = localStorage.getItem('token');
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       const response = await fetch('http://localhost:5000/api/mysql/divisions', {
+=======
+      // Prefer HRIS divisions endpoint to match SectionManagement
+      let response = await fetch('http://localhost:5000/api/divisions/hris', {
+>>>>>>> Stashed changes
 =======
       // Prefer HRIS divisions endpoint to match SectionManagement
       let response = await fetch('http://localhost:5000/api/divisions/hris', {
@@ -66,8 +71,11 @@ const ReportGeneration = () => {
       if (response.ok) {
         const data = await response.json();
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         setDivisions(data.divisions || []);
 =======
+=======
+>>>>>>> Stashed changes
         // Accept multiple response formats and normalize divisions
         let divisionsArray = [];
         if (Array.isArray(data)) {
@@ -99,7 +107,12 @@ const ReportGeneration = () => {
     try {
       const token = localStorage.getItem('token');
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       const response = await fetch('http://localhost:5000/api/mysql/sections', {
+=======
+      // Prefer HRIS sections (same source as SectionManagement) and fallback to generic /sections
+      let response = await fetch('http://localhost:5000/api/sections/hris', {
+>>>>>>> Stashed changes
 =======
       // Prefer HRIS sections (same source as SectionManagement) and fallback to generic /sections
       let response = await fetch('http://localhost:5000/api/sections/hris', {
@@ -108,6 +121,7 @@ const ReportGeneration = () => {
           'Authorization': `Bearer ${token}`
         }
       });
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
       
       if (response.ok) {
@@ -129,6 +143,22 @@ const ReportGeneration = () => {
 
       if (response.ok) {
         const data = await response.json();
+=======
+
+      if (!response.ok) {
+        // Fallback to legacy endpoint
+        console.warn('HRIS sections endpoint returned non-OK, falling back to /api/sections', response.status);
+        response = await fetch('http://localhost:5000/api/sections', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+>>>>>>> Stashed changes
         // Handle different response formats
         let sectionsArray = [];
         if (Array.isArray(data)) {

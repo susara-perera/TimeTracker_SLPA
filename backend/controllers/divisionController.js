@@ -977,6 +977,9 @@ const getCombinedDivisions = async (req, res) => {
   }
 };
 
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 module.exports = {
   getDivisions,
