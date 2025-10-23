@@ -42,15 +42,53 @@ const ReportGeneration = () => {
   const fetchDivisions = async () => {
     try {
       const token = localStorage.getItem('token');
+<<<<<<< Updated upstream
       const response = await fetch('http://localhost:5000/api/mysql/divisions', {
+=======
+      // Prefer HRIS divisions endpoint to match SectionManagement
+      let response = await fetch('http://localhost:5000/api/divisions/hris', {
+>>>>>>> Stashed changes
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
+      if (!response.ok) {
+        console.warn('HRIS divisions endpoint non-OK, falling back to /api/divisions', response.status);
+        response = await fetch('http://localhost:5000/api/divisions', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+
       if (response.ok) {
         const data = await response.json();
+<<<<<<< Updated upstream
         setDivisions(data.divisions || []);
+=======
+        // Accept multiple response formats and normalize divisions
+        let divisionsArray = [];
+        if (Array.isArray(data)) {
+          divisionsArray = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          divisionsArray = data.data;
+        } else if (data.divisions && Array.isArray(data.divisions)) {
+          divisionsArray = data.divisions;
+        }
+
+        const normalized = divisionsArray.map(d => ({
+          _id: String(d._id ?? d.id ?? d.DIVISION_ID ?? d.code ?? d.DIVISION_CODE ?? ''),
+          code: String(d.code ?? d.DIVISION_CODE ?? ''),
+          name: d.name ?? d.DIVISION_NAME ?? d.hie_name ?? d.hie_relationship ?? 'Unknown Division',
+          ...d
+        })).sort((a, b) => a.name.localeCompare(b.name));
+
+        setDivisions(normalized);
+      } else {
+        setDivisions([]);
+>>>>>>> Stashed changes
       }
     } catch (err) {
       console.error('Error fetching divisions:', err);
@@ -60,16 +98,60 @@ const ReportGeneration = () => {
   const fetchAllSections = async () => {
     try {
       const token = localStorage.getItem('token');
+<<<<<<< Updated upstream
       const response = await fetch('http://localhost:5000/api/mysql/sections', {
+=======
+      // Prefer HRIS sections (same source as SectionManagement) and fallback to generic /sections
+      let response = await fetch('http://localhost:5000/api/sections/hris', {
+>>>>>>> Stashed changes
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
+<<<<<<< Updated upstream
       
       if (response.ok) {
         const data = await response.json();
         setAllSections(data.sections || []);
         setSections(data.sections || []);
+=======
+
+      if (!response.ok) {
+        // Fallback to legacy endpoint
+        console.warn('HRIS sections endpoint returned non-OK, falling back to /api/sections', response.status);
+        response = await fetch('http://localhost:5000/api/sections', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        // Handle different response formats
+        let sectionsArray = [];
+        if (Array.isArray(data)) {
+          sectionsArray = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          sectionsArray = data.data;
+        } else if (data.sections && Array.isArray(data.sections)) {
+          sectionsArray = data.sections;
+        }
+
+        // Normalize minimal fields so dropdown shows name and id consistently
+        const normalized = sectionsArray.map(s => ({
+          _id: s._id || s.id || s.SECTION_ID || s.code || s.section_code,
+          name: s.name || s.section_name || s.SECTION_NAME || s.hie_name || s.hie_relationship || s.section_name,
+          ...s
+        }));
+
+        setAllSections(normalized);
+        setSections(normalized);
+      } else {
+        setAllSections([]);
+        setSections([]);
+>>>>>>> Stashed changes
       }
     } catch (err) {
       console.error('Error fetching sections:', err);

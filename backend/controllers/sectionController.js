@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Division = require('../models/Division');
 const AuditLog = require('../models/AuditLog');
 const { validationResult } = require('express-validator');
+const { readData } = require('../services/hrisApiService');
 
 // @desc    Get all sections
 // @route   GET /api/sections
@@ -574,6 +575,123 @@ const removeEmployeeFromSection = async (req, res) => {
   }
 };
 
+// @desc    Get all sections from HRIS API
+// @route   GET /api/sections/hris
+// @access  Public (for now)
+const getHrisSections = async (req, res) => {
+  try {
+    console.log('Attempting to fetch sections from HRIS API...');
+    
+    // Fetch all company hierarchy data first (no filter to avoid HRIS API filter issues)
+    const allHierarchy = await readData('company_hierarchy', {});
+    
+    // Filter for Level 4 (sections) locally to avoid HRIS API filter issues
+    const sections = allHierarchy.filter(item => item.DEF_LEVEL === 4 || item.DEF_LEVEL === '4');
+    
+    // Create a mapping of division codes to division names
+    const divisions = allHierarchy.filter(item => item.DEF_LEVEL === 3 || item.DEF_LEVEL === '3');
+    const divisionMap = {};
+    divisions.forEach(div => {
+      divisionMap[div.HIE_CODE] = div.HIE_NAME;
+    });
+    
+    // Transform HRIS data to match frontend expectations
+    const transformedSections = sections.map((section, index) => {
+      const divisionName = divisionMap[section.HIE_RELATIONSHIP] || `Division ${section.HIE_RELATIONSHIP}`;
+      
+      return {
+        _id: section.HIE_CODE || `hris_section_${index}`,
+        code: section.HIE_CODE || 'N/A',
+        name: section.HIE_NAME || 'Unknown Section',
+        description: section.HIE_NAME_SINHALA || '',
+        isActive: true, // Assume all HRIS sections are active
+        employeeCount: 0, // Will need separate call to get this
+        createdAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        // Additional HRIS specific fields
+        hie_code: section.HIE_CODE,
+        hie_name: section.HIE_NAME,
+        hie_relationship: divisionName, // Use division name instead of code
+        def_level: section.DEF_LEVEL,
+        division_code: section.HIE_RELATIONSHIP, // Keep original code for reference
+        division_name: divisionName // Explicit division name field
+      };
+    });
+
+    console.log(`Successfully fetched ${transformedSections.length} sections from HRIS`);
+
+    res.status(200).json({
+      success: true,
+      message: 'HRIS sections fetched successfully',
+      data: transformedSections,
+      pagination: {
+        page: 1,
+        limit: transformedSections.length,
+        total: transformedSections.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
+    });
+  } catch (error) {
+    console.error('Get HRIS sections error:', error.message);
+    console.error('Falling back to local sections...');
+    
+    try {
+      // Fallback to local sections with HRIS-like structure
+      const Section = require('../models/Section');
+      const localSections = await Section.find({ isActive: true })
+        .populate('division', 'name code')
+        .populate('supervisor', 'firstName lastName email employeeId')
+        .populate('employeeCount')
+        .sort({ name: 1 });
+
+      // Transform local sections to match HRIS format
+      const transformedLocalSections = localSections.map((section, index) => ({
+        _id: section._id,
+        code: section.code || `SEC${String(index + 1).padStart(3, '0')}`,
+        name: section.name,
+        description: section.description || '',
+        isActive: section.isActive,
+        employeeCount: section.employeeCount || 0,
+        createdAt: section.createdAt?.toISOString() || new Date().toISOString(),
+        status: section.isActive ? 'ACTIVE' : 'INACTIVE',
+        // HRIS-like fields for compatibility
+        hie_code: section.code || `SEC${String(index + 1).padStart(3, '0')}`,
+        hie_name: section.name,
+        hie_relationship: section.division ? section.division.name : 'LOCAL_DB',
+        def_level: 4,
+        source: 'LOCAL_FALLBACK'
+      }));
+
+      console.log(`Fallback: returning ${transformedLocalSections.length} local sections`);
+
+      res.status(200).json({
+        success: true,
+        message: 'HRIS API unavailable. Showing local sections as fallback.',
+        data: transformedLocalSections,
+        pagination: {
+          page: 1,
+          limit: transformedLocalSections.length,
+          total: transformedLocalSections.length,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPrevPage: false
+        },
+        fallback: true,
+        originalError: 'HRIS API connection failed'
+      });
+    } catch (fallbackError) {
+      console.error('Fallback to local sections also failed:', fallbackError);
+      res.status(500).json({
+        success: false,
+        message: 'Both HRIS API and local database are unavailable',
+        error: error.message
+      });
+    }
+  }
+};
+
 module.exports = {
   getSections,
   getSection,
@@ -584,5 +702,6 @@ module.exports = {
   getSectionStats,
   toggleSectionStatus,
   assignEmployeeToSection,
-  removeEmployeeFromSection
+  removeEmployeeFromSection,
+  getHrisSections
 };

@@ -8,7 +8,9 @@ const {
   getDivisionEmployees,
   getDivisionSections,
   getDivisionStats,
-  toggleDivisionStatus
+  toggleDivisionStatus,
+  getHrisDivisions,
+  getCombinedDivisions
 } = require('../controllers/divisionController');
 const { 
   auth, 
@@ -20,8 +22,19 @@ const { divisionValidation, queryValidation } = require('../middleware/validatio
 
 const router = express.Router();
 
+// Static routes first (before parameterized routes)
+// @route   GET /api/divisions/hris
+// @desc    Get all divisions from HRIS API
+// @access  Public (for now)
+router.get('/hris', getHrisDivisions);
+
+// @route   GET /api/divisions/combined
+// @desc    Get divisions from both local DB and HRIS API
+// @access  Public (for now)
+router.get('/combined', getCombinedDivisions);
+
 // @route   GET /api/divisions
-// @desc    Get all divisions
+// @desc    Get all divisions (supports ?source=hris for HRIS data)
 // @access  Private
 router.get(
   '/',

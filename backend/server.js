@@ -9,6 +9,7 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
+const { login: hrisApiLogin } = require('./services/hrisApiService');
 const connectDB = require('./config/database');
 const { testMySQLConnection } = require('./config/mysql');
 
@@ -50,6 +51,11 @@ testMySQLConnection().then(success => {
   } else {
     console.log('⚠️ MySQL not available - reports may be limited');
   }
+});
+
+// Login to HRIS API on startup
+hrisApiLogin().catch(err => {
+  console.error('Failed to login to HRIS API on startup:', err.message);
 });
 
 // Security middleware
@@ -155,6 +161,11 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/mysql', require('./routes/mysql'));
 app.use('/api/roles', require('./routes/role'));
 app.use('/api/permissions', require('./routes/permission'));
+<<<<<<< Updated upstream
+=======
+app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/subsections', require('./routes/subSection'));
+>>>>>>> Stashed changes
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

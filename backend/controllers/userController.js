@@ -3,6 +3,7 @@ const Division = require('../models/Division');
 const Section = require('../models/Section');
 const AuditLog = require('../models/AuditLog');
 const mongoose = require('mongoose');
+const { readData } = require('../services/hrisApiService');
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -855,6 +856,179 @@ const unlockAllUsers = async (req, res) => {
   }
 };
 
+// @desc    Get all employees from HRIS API
+// @route   GET /api/users/hris
+// @access  Public (for now)
+const getHrisEmployees = async (req, res) => {
+  try {
+    console.log('Attempting to fetch employees from HRIS API...');
+    
+    const { emp_number, division, section } = req.query;
+    let filter = {};
+    
+    if (emp_number) {
+      // The API expects an array of numbers for EMP_NUMBER filter
+      const empNumbers = Array.isArray(emp_number) ? emp_number.map(Number) : [Number(emp_number)];
+      filter = { EMP_NUMBER: empNumbers };
+    }
+
+    // Fetch all employees (avoid filter issues)
+    const allEmployees = await readData('employee', {});
+    
+    // Get hierarchy data for division and section mapping
+    const allHierarchy = await readData('company_hierarchy', {});
+    const divisions = allHierarchy.filter(item => item.DEF_LEVEL === 3 || item.DEF_LEVEL === '3');
+    const sections = allHierarchy.filter(item => item.DEF_LEVEL === 4 || item.DEF_LEVEL === '4');
+    
+    // Create mappings
+    const divisionMap = {};
+    const sectionMap = {};
+    
+    divisions.forEach(div => {
+      divisionMap[div.HIE_CODE] = div.HIE_NAME;
+    });
+    
+    sections.forEach(sec => {
+      sectionMap[sec.HIE_CODE] = {
+        name: sec.HIE_NAME,
+        division_code: sec.HIE_RELATIONSHIP
+      };
+    });
+
+    // Transform and filter employees
+    let employees = allEmployees;
+    
+    // Apply emp_number filter if provided
+    if (emp_number) {
+      const empNumbers = Array.isArray(emp_number) ? emp_number.map(Number) : [Number(emp_number)];
+      employees = employees.filter(emp => empNumbers.includes(emp.EMP_NUMBER));
+    }
+    
+    // Transform employees data to include division and section info
+    const transformedEmployees = employees.map((employee, index) => {
+      // Employee division and section codes come from HIE_CODE_2 and HIE_CODE_3
+      const divisionCode = employee.HIE_CODE_2;
+      const sectionCode = employee.HIE_CODE_3;
+      
+      // Get division and section names from hierarchy mapping
+      const divisionName = divisionMap[divisionCode] || 
+        employee.currentwork?.HIE_NAME_2 || 
+        `Division ${divisionCode}`;
+      
+      const sectionInfo = sectionMap[sectionCode] || {};
+      const sectionName = sectionInfo.name || 
+        employee.currentwork?.HIE_NAME_3 || 
+        `Section ${sectionCode}`;
+      
+      return {
+        _id: employee._id || `hris_emp_${index}`,
+        EMP_NUMBER: employee.EMP_NUMBER,
+        FULLNAME: employee.FULLNAME,
+        CALLING_NAME: employee.CALLING_NAME,
+        DESIGNATION: employee.currentwork?.designation,
+        GENDER: employee.GENDER,
+        NIC: employee.NIC,
+        DATE_OF_BIRTH: employee.BIRTHDAY,
+        DATE_OF_JOINING: employee.DATE_JOINED,
+        SECTION_CODE: sectionCode,
+        SECTION_NAME: sectionName,
+        DIVISION_CODE: divisionCode,
+        DIVISION_NAME: divisionName,
+        STATUS: employee.ACTIVE_HRM_FLG === 1 ? 'ACTIVE' : 'INACTIVE',
+        currentwork: employee.currentwork
+      };
+    });
+
+    // Apply division filter if provided
+    if (division && division !== 'all') {
+      employees = transformedEmployees.filter(emp => 
+        String(emp.DIVISION_CODE) === String(division)
+      );
+    } else {
+      employees = transformedEmployees;
+    }
+
+    // Apply section filter if provided
+    if (section && section !== 'all') {
+      employees = employees.filter(emp => 
+        String(emp.SECTION_CODE) === String(section)
+      );
+    }
+
+    console.log(`Successfully fetched ${employees.length} employees from HRIS`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'HRIS employees fetched successfully',
+      data: employees,
+      pagination: {
+        page: 1,
+        limit: employees.length,
+        total: employees.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
+    });
+  } catch (error) {
+    console.error('Get HRIS employees error:', error.message);
+    console.error('Falling back to local employees...');
+    
+    try {
+      // Fallback to local employees
+      const User = require('../models/User');
+      const localEmployees = await User.find({ isActive: true })
+        .populate('division', 'name code')
+        .populate('section', 'name code')
+        .sort({ firstName: 1, lastName: 1 });
+
+      const transformedLocalEmployees = localEmployees.map((employee, index) => ({
+        _id: employee._id,
+        EMP_NUMBER: employee.employeeId,
+        FULLNAME: `${employee.firstName} ${employee.lastName}`,
+        CALLING_NAME: employee.firstName,
+        DESIGNATION: employee.role,
+        GENDER: employee.gender || 'N/A',
+        NIC: employee.nic || 'N/A',
+        DATE_OF_BIRTH: employee.dateOfBirth?.toISOString() || null,
+        DATE_OF_JOINING: employee.dateOfJoining?.toISOString() || null,
+        SECTION_CODE: employee.section?.code || 'N/A',
+        SECTION_NAME: employee.section?.name || 'No Section',
+        DIVISION_CODE: employee.division?.code || 'N/A',
+        DIVISION_NAME: employee.division?.name || 'No Division',
+        STATUS: employee.isActive ? 'ACTIVE' : 'INACTIVE',
+        source: 'LOCAL_FALLBACK'
+      }));
+
+      console.log(`Fallback: returning ${transformedLocalEmployees.length} local employees`);
+
+      res.status(200).json({
+        success: true,
+        message: 'HRIS API unavailable. Showing local employees as fallback.',
+        data: transformedLocalEmployees,
+        pagination: {
+          page: 1,
+          limit: transformedLocalEmployees.length,
+          total: transformedLocalEmployees.length,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPrevPage: false
+        },
+        fallback: true,
+        originalError: 'HRIS API connection failed'
+      });
+    } catch (fallbackError) {
+      console.error('Fallback to local employees also failed:', fallbackError);
+      res.status(500).json({
+        success: false,
+        message: 'Both HRIS API and local database are unavailable',
+        error: error.message
+      });
+    }
+  }
+};
+
+
 module.exports = {
   getUsers,
   getUser,
@@ -864,5 +1038,6 @@ module.exports = {
   getUserStats,
   toggleUserStatus,
   unlockUser,
-  unlockAllUsers
+  unlockAllUsers,
+  getHrisEmployees
 };

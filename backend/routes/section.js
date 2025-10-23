@@ -9,7 +9,8 @@ const {
   getSectionStats,
   toggleSectionStatus,
   assignEmployeeToSection,
-  removeEmployeeFromSection
+  removeEmployeeFromSection,
+  getHrisSections
 } = require('../controllers/sectionController');
 const { 
   auth, 
@@ -20,6 +21,12 @@ const {
 const { sectionValidation, queryValidation } = require('../middleware/validation');
 
 const router = express.Router();
+
+// Static routes first (before parameterized routes)
+// @route   GET /api/sections/hris
+// @desc    Get all sections from HRIS API
+// @access  Public (for now)
+router.get('/hris', getHrisSections);
 
 // @route   GET /api/sections
 // @desc    Get all sections

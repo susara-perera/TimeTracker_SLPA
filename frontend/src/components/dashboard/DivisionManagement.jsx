@@ -7,6 +7,8 @@ const DivisionManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [currentDivision, setCurrentDivision] = useState(null);
+  const [isHrisSource, setIsHrisSource] = useState(true); // Read-only when loading from HRIS API
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     code: ''
@@ -17,8 +19,57 @@ const DivisionManagement = () => {
   const canCreate = usePermission('divisions', 'create');
   const canUpdate = usePermission('divisions', 'update');
   const canDelete = usePermission('divisions', 'delete');
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  // Fetch divisions from API
+  // Helpers: robust date parsing for HRIS/Mongo-like payloads
+  const formatDateYmd = (d) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  const parseHrisDate = (value) => {
+    if (!value) return '';
+    try {
+      if (typeof value === 'string') {
+        const asNum = Number(value);
+        if (!Number.isNaN(asNum) && value.trim() !== '') {
+          const d = new Date(asNum);
+          return Number.isNaN(d) ? '' : formatDateYmd(d);
+        }
+        const d = new Date(value);
+        return Number.isNaN(d) ? '' : formatDateYmd(d);
+      }
+      if (typeof value === 'number') {
+        const d = new Date(value);
+        return Number.isNaN(d) ? '' : formatDateYmd(d);
+      }
+      if (typeof value === 'object') {
+        if (value.$date) {
+          const v = value.$date;
+          if (typeof v === 'object' && v.$numberLong) {
+            const d = new Date(Number(v.$numberLong));
+            return Number.isNaN(d) ? '' : formatDateYmd(d);
+          }
+          if (typeof v === 'string' || typeof v === 'number') {
+            const d = new Date(v);
+            return Number.isNaN(d) ? '' : formatDateYmd(d);
+          }
+        }
+        if (value.$numberLong) {
+          const d = new Date(Number(value.$numberLong));
+          return Number.isNaN(d) ? '' : formatDateYmd(d);
+        }
+      }
+    } catch (_) {
+      return '';
+    }
+    return '';
+  };
+
+  // Helper: normalize text for case-insensitive comparisons
+  const normalizeTextKey = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().toLowerCase() : '');
+
+  // Fetch divisions from HRIS API (read-only display)
   const fetchDivisions = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -29,8 +80,8 @@ const DivisionManagement = () => {
         return;
       }
 
-      console.log('Fetching divisions from API...');
-      const response = await fetch('http://localhost:5000/api/divisions?limit=100', {
+      console.log('Fetching divisions from HRIS API...');
+      const response = await fetch(`${API_BASE_URL}/divisions/hris`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -40,10 +91,19 @@ const DivisionManagement = () => {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('API Response:', data);
-        console.log('Divisions count:', data.data ? data.data.length : 0);
-        console.log('Division details:', data.data);
-        setDivisions(data.data || []);
+        console.log('HRIS API Response:', data);
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        // Normalize to local shape expected by the table
+        const normalized = rows.map((d) => ({
+          _id: String(d?._id ?? d?.id ?? d?.DIVISION_ID ?? d?.code ?? d?.hie_code ?? d?.DIVISION_CODE ?? ''),
+          code: String(d?.code ?? d?.DIVISION_CODE ?? d?.hie_code ?? ''),
+          name: d?.name ?? d?.DIVISION_NAME ?? d?.hie_name ?? d?.hie_relationship ?? 'Unknown Division',
+          isActive: typeof d?.isActive === 'boolean' ? d.isActive : (typeof d?.active === 'boolean' ? d.active : true),
+          employeeCount: d?.employeeCount ?? d?.count ?? undefined,
+          createdAt: d?.createdAt ?? d?.created_at ?? d?.CREATED_AT ?? d?.createdOn ?? d?.CREATED_ON ?? null,
+        })).sort((a, b) => a.name.localeCompare(b.name));
+        setDivisions(normalized);
+        setIsHrisSource(true);
       } else {
         console.error('Failed to fetch divisions:', response.status, response.statusText);
         const errorText = await response.text();
@@ -241,15 +301,47 @@ const DivisionManagement = () => {
     <div className="division-management">
       <div className="section-header">
         <h2><i className="bi bi-building"></i> Division Management</h2>
-        <button 
-          className="btn-professional btn-primary"
-          onClick={canCreate ? handleAdd : undefined}
-          disabled={!canCreate}
-          title={!canCreate ? 'You do not have permission to add divisions' : 'Add Division'}
-          style={{ cursor: canCreate ? 'pointer' : 'not-allowed' }}
-        >
-          <i className="bi bi-plus-circle"></i> Add Division
-        </button>
+      </div>
+
+      {/* Unified Search Section */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        background: '#fff',
+        borderRadius: '16px',
+        boxShadow: '0 2px 12px rgba(102,126,234,0.07)',
+        padding: '28px 32px',
+        marginBottom: '28px',
+        gap: '32px',
+        flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 320 }}>
+          <label htmlFor="divisionSearch" className="form-label m-0" style={{ fontWeight: 600, color: '#374151', fontSize: '16px' }}>
+            Search:
+          </label>
+          <input
+            id="divisionSearch"
+            type="text"
+            className="form-control"
+            placeholder="Search by Division Code or Name"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              maxWidth: '360px',
+              fontSize: '15px',
+              borderRadius: '8px',
+              border: '2px solid #e0e7ff',
+              background: '#f8fafc',
+              color: '#374151',
+              fontWeight: 500,
+              boxShadow: '0 1px 4px rgba(102,126,234,0.04)',
+              padding: '10px 18px',
+              outline: 'none',
+              transition: 'border 0.2s',
+            }}
+          />
+        </div>
       </div>
 
       {/* Professional Divisions Table */}
@@ -260,52 +352,41 @@ const DivisionManagement = () => {
               <tr>
                 <th>Division Code</th>
                 <th>Division Name</th>
-                <th>Employees</th>
                 <th>Status</th>
                 <th>Created Date</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {divisions.map(division => (
-                <tr key={division._id}>
+              {(divisions.filter(d => {
+                const q = normalizeTextKey(searchQuery);
+                if (!q) return true;
+                const codeKey = normalizeTextKey(d.code || '');
+                const nameKey = normalizeTextKey(d.name || '');
+                return codeKey.includes(q) || nameKey.includes(q);
+              })).map(division => (
+                <tr key={division._id || division.code || division.name}>
                   <td>
                     <span className="role-badge role-admin">
                       {division.code}
                     </span>
                   </td>
                   <td><strong>{division.name}</strong></td>
-                  <td>{division.employeeCount || 0}</td>
                   <td>
                     <span className={`status-badge ${division.isActive ? 'status-active' : 'status-inactive'}`}>
                       {division.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
+                  <td>{division.createdAt ? (parseHrisDate(division.createdAt) || 'N/A') : 'N/A'}</td>
                   <td>
-                    {division.createdAt ? new Date(division.createdAt).toLocaleDateString() : 'N/A'}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        className="btn-professional btn-primary"
-                        onClick={canUpdate ? () => handleEdit(division) : undefined}
-                        title={!canUpdate ? 'No permission to edit divisions' : 'Edit Division'}
-                        disabled={!canUpdate}
-                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canUpdate ? 'pointer' : 'not-allowed' }}
-                      >
-                        <i className="bi bi-pencil"></i>
-                      </button>
-+                      
-                      <button 
-                        className="btn-professional btn-danger"
-                        onClick={canDelete ? () => handleDelete(division) : undefined}
-                        title={!canDelete ? 'No permission to delete divisions' : 'Delete Division'}
-                        disabled={!canDelete}
-                        style={{ padding: '8px 12px', fontSize: '12px', cursor: canDelete ? 'pointer' : 'not-allowed' }}
-                      >
-                        <i className="bi bi-trash"></i>
-                      </button>
-                    </div>
+                    <button
+                      className="btn-professional btn-info"
+                      onClick={() => setCurrentDivision(division)}
+                      title="View Division Details"
+                      style={{ padding: '8px 14px', fontSize: '13px', fontWeight: 600, color: '#2563eb', background: '#e0e7ff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <i className="bi bi-eye"></i> View
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -320,77 +401,47 @@ const DivisionManagement = () => {
         )}
       </div>
 
-      {/* Add/Edit Division Modal */}
-      {(showAddModal || showEditModal) && (
-        <div className="modal-overlay" onClick={handleCloseModal}>
-          <div className="modal-content professional-form" onClick={(e) => e.stopPropagation()}>
+      {/* View Division Modal */}
+      {currentDivision && (
+        <div className="modal-overlay" onClick={() => setCurrentDivision(null)}>
+          <div className="modal-content professional-form" onClick={e => e.stopPropagation()}>
             <div className="modal-header" style={{ borderBottom: '2px solid var(--gray-200)', paddingBottom: '20px', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <i className={`bi ${currentDivision ? "bi-pencil-square" : "bi-plus-circle"}`} style={{ color: 'var(--primary)' }}></i>
-                {currentDivision ? 'Edit Division' : 'Add New Division'}
+                <i className="bi bi-eye"></i>
+                Division Details
               </h3>
-              <button 
+              <button
                 className="modal-close btn-professional btn-danger"
-                onClick={handleCloseModal}
+                onClick={() => setCurrentDivision(null)}
                 style={{ padding: '8px 12px', fontSize: '16px' }}
               >
                 <i className="bi bi-x"></i>
               </button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Division Name *</label>
-                <input
-                  type="text"
-                  name="name"
-                  className={`form-input ${formErrors.name ? 'error' : ''}`}
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="Enter division name"
-                  required
-                />
-                {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Division Code *</label>
-                <input
-                  type="text"
-                  name="code"
-                  className={`form-input ${formErrors.code ? 'error' : ''}`}
-                  value={formData.code}
-                  onChange={handleInputChange}
-                  placeholder="Enter division code (e.g., ENG, HR)"
-                  required
-                />
-                {formErrors.code && <span className="error-text">{formErrors.code}</span>}
-              </div>
-
-              <div className="modal-footer" style={{ borderTop: '2px solid var(--gray-200)', paddingTop: '20px', marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button 
-                  type="button"
-                  className="btn-professional btn-secondary"
-                  onClick={handleCloseModal}
-                  disabled={submitting}
-                  style={{ background: 'var(--gray-500)' }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="btn-professional btn-success"
-                  disabled={submitting}
-                >
-                  <i className={`bi ${currentDivision ? "bi-check-circle" : "bi-plus-circle"}`}></i>
-                  {submitting ? (
-                    currentDivision ? 'Updating...' : 'Adding...'
-                  ) : (
-                    currentDivision ? 'Update Division' : 'Add Division'
-                  )}
-                </button>
-              </div>
-            </form>
+            <div className="modal-body" style={{ fontSize: '16px', color: '#222', padding: '8px 0 0 0' }}>
+              {Object.entries(currentDivision).map(([key, value]) => {
+                // Format key to readable label
+                const label = key
+                  .replace(/([A-Z])/g, ' $1')
+                  .replace(/^./, str => str.toUpperCase())
+                  .replace(/_/g, ' ');
+                let displayValue = value;
+                if (key.toLowerCase().includes('date') && value) {
+                  displayValue = parseHrisDate(value) || value;
+                }
+                if (typeof value === 'boolean') {
+                  displayValue = value ? 'Yes' : 'No';
+                }
+                if (typeof value === 'object' && value !== null) {
+                  displayValue = <pre style={{ background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontSize: '14px', overflowX: 'auto' }}>{JSON.stringify(value, null, 2)}</pre>;
+                }
+                return (
+                  <div key={key} style={{ marginBottom: '18px' }}>
+                    <strong>{label}:</strong> {displayValue}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

@@ -8,7 +8,8 @@ const {
   getUserStats,
   toggleUserStatus,
   unlockUser,
-  unlockAllUsers
+  unlockAllUsers,
+  getHrisEmployees
 } = require('../controllers/userController');
 const { 
   auth, 
@@ -32,6 +33,11 @@ router.get(
   // auditTrail('users_viewed', 'User'),
   getUsers
 );
+
+// @route   GET /api/users/hris
+// @desc    Get all employees from HRIS API
+// @access  Public (for now)
+router.get('/hris', getHrisEmployees);
 
 // @route   GET /api/users/stats
 // @desc    Get user statistics

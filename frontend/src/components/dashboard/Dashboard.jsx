@@ -7,12 +7,16 @@ import DivisionManagement from './DivisionManagement';
 import SectionManagement from './SectionManagement';
 import RoleAccessManagement from './RoleAccessManagement';
 import RoleManagement from './RoleManagement';
+import ApiDataViewer from './ApiDataViewer';
 import Settings from './Settings';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const { user, logout } = useContext(AuthContext);
+  const [theme, setTheme] = useState('light');
 
   const handleLogout = async () => {
     try {
@@ -46,10 +50,35 @@ const Dashboard = () => {
       case 'settings':
         setActiveSection('settings');
         break;
+      case 'api':
+        setActiveSection('api');
+        break;
       default:
         break;
     }
   };
+
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'dark' : 'light');
+  };
+
+  // Handle keyboard events for accessibility
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (sidebarOpen) {
+          setSidebarOpen(false);
+        }
+        if (showProfileDropdown) {
+          setShowProfileDropdown(false);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen, showProfileDropdown]);
 
   const getCurrentTime = () => {
     const now = new Date();
@@ -109,6 +138,8 @@ const Dashboard = () => {
         return <RoleAccessManagement />;
       case 'role-management':
         return <RoleManagement />;
+      case 'api':
+        return <ApiDataViewer />;
       case 'settings':
         return <Settings />;
       default:
@@ -160,6 +191,13 @@ const Dashboard = () => {
       roles: ['super_admin']
     },
     {
+      id: 'api',
+      label: 'API Data',
+      icon: 'bi-cloud-download',
+      color: 'info',
+      roles: ['super_admin', 'admin']
+    },
+    {
       id: 'settings',
       label: 'Settings',
       icon: 'bi-gear',
@@ -184,76 +222,180 @@ const Dashboard = () => {
 
   return (
     <div className="modern-dashboard">
-      {/* Top Navigation */}
-      <nav className="top-nav">
-        <div className="nav-container">
-          {/* Logo Section */}
-          <div className="nav-brand">
+      {/* Sidebar */}
+      <div className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="sidebar-brand">
             <div className="brand-icon">
               <i className="bi bi-clock-history"></i>
             </div>
             <div className="brand-text">
-              <h1>TimeTrack</h1>
-              <span>SLPA Attendance System</span>
+              <h3>TimeTrack</h3>
+              <span>SLPA System</span>
             </div>
+          </div>
+          <button 
+            className="sidebar-close-btn"
+            onClick={() => setSidebarOpen(false)}
+            title="Close Sidebar"
+          >
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        <div className="sidebar-content">
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Quick Actions</div>
+            <div className="sidebar-actions">
+              {quickActions.map((action) => {
+                if (!hasAccess(action.roles)) return null;
+                
+                return (
+                  <button
+                    key={action.id}
+                    className={`sidebar-btn ${action.color} ${activeSection === action.id ? 'active' : ''}`}
+                    onClick={() => {
+                      handleQuickAction(action.id);
+                      setSidebarOpen(false);
+                    }}
+                    title={action.label}
+                  >
+                    <i className={`bi ${action.icon}`}></i>
+                    <span>{action.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="sidebar-overlay active"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
+
+      {/* Top Navigation */}
+      <nav className="top-nav">
+        <div className="nav-container">
+          {/* Toggle Button and Logo Section */}
+          <div className="nav-left">
+            <button 
+              className="sidebar-toggle-btn"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              title="Toggle Sidebar"
+            >
+              <i className="bi bi-list"></i>
+            </button>
+            
+            <div className="nav-brand">
+              <div className="brand-icon">
+                <i className="bi bi-clock-history"></i>
+              </div>
+              <div className="brand-text">
+                <h1>TimeTrack</h1>
+                <span>SLPA Attendance System</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Center Time Display */}
+          <div className="header-time-center">
+            <div className="time">{currentTime.time}</div>
+            <div className="date">{currentTime.date}</div>
           </div>
 
           {/* User Section */}
           <div className="nav-user">
-            <div className="welcome-message">
-              <div className="greeting">{getGreeting()}</div>
-              <div className="welcome-text">Welcome back, {user?.firstName || 'User'}! 👋</div>
-            </div>
-            
-            <div className="time-display">
-              <div className="time">{currentTime.time}</div>
-              <div className="date">{currentTime.date}</div>
-            </div>
-            
-            <div className="user-profile">
-              <div className="user-avatar">
+            {/* Header Actions */}
+            <div className="header-actions">
+              <button 
+                className="header-action-btn profile-btn" 
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                title="Profile"
+              >
                 <i className="bi bi-person-circle"></i>
-              </div>
-              <div className="user-info">
-                <div className="user-name">{user?.firstName || 'User'} {user?.lastName || ''}</div>
-                <div className="user-role">{user?.role?.replace('_', ' ') || 'Employee'}</div>
-              </div>
-            </div>
-
-            <button className="logout-btn" onClick={handleLogout}>
-              <i className="bi bi-power"></i>
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Quick Actions Bar */}
-      <div className="quick-actions-bar">
-        <div className="actions-container">
-          <div className="actions-label">
-            <i className="bi bi-lightning-charge"></i>
-            <span>Quick Actions</span>
-          </div>
-          <div className="actions-list">
-            {quickActions.map((action) => {
-              if (!hasAccess(action.roles)) return null;
+              </button>
               
-              return (
-                <button
-                  key={action.id}
-                  className={`quick-btn ${action.color}`}
-                  onClick={() => handleQuickAction(action.id)}
-                  title={action.label}
-                >
-                  <i className={`bi ${action.icon}`}></i>
-                  <span>{action.label}</span>
-                </button>
-              );
-            })}
+              <button 
+                className="header-action-btn settings-btn" 
+                onClick={() => handleQuickAction('settings')}
+                title="Settings"
+              >
+                <i className="bi bi-gear"></i>
+              </button>
+              
+              <button className="logout-btn" onClick={handleLogout}>
+                <span>Logout</span>
+              </button>
+
+              <button
+                className="header-action-btn theme-btn"
+                onClick={toggleTheme}
+                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              >
+                <i className={`bi ${theme === 'light' ? 'bi-moon' : 'bi-sun'}`}></i>
+              </button>
+            </div>
           </div>
           
+          {/* Profile Dropdown */}
+          {showProfileDropdown && (
+            <div className="profile-dropdown">
+              <div className="profile-dropdown-header">
+                <div className="profile-avatar-large">
+                  <i className="bi bi-person-circle"></i>
+                </div>
+                <div className="profile-info">
+                  <h3>{user?.firstName || 'User'} {user?.lastName || ''}</h3>
+                  <p className="profile-role">{user?.role?.replace('_', ' ') || 'Super Admin'}</p>
+                </div>
+              </div>
+              <div className="profile-dropdown-body">
+                <div className="profile-detail">
+                  <i className="bi bi-envelope"></i>
+                  <span>{user?.email || 'email@example.com'}</span>
+                </div>
+                <div className="profile-detail">
+                  <i className="bi bi-phone"></i>
+                  <span>{user?.phone || 'N/A'}</span>
+                </div>
+                <div className="profile-detail">
+                  <i className="bi bi-building"></i>
+                  <span>{user?.division || 'N/A'}</span>
+                </div>
+                <div className="profile-detail">
+                  <i className="bi bi-diagram-3"></i>
+                  <span>{user?.section || 'N/A'}</span>
+                </div>
+              </div>
+              <div className="profile-dropdown-footer">
+                <button 
+                  className="profile-dropdown-btn"
+                  onClick={() => {
+                    setShowProfileDropdown(false);
+                    handleQuickAction('settings');
+                  }}
+                >
+                  <i className="bi bi-gear"></i>
+                  <span>Settings</span>
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Dropdown Overlay */}
+          {showProfileDropdown && (
+            <div 
+              className="dropdown-overlay"
+              onClick={() => setShowProfileDropdown(false)}
+            ></div>
+          )}
         </div>
-      </div>
+      </nav>
 
       {/* Main Content */}
       <main className="main-content">

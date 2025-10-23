@@ -2,6 +2,7 @@ const Division = require('../models/Division');
 const Section = require('../models/Section');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
+const { readData } = require('../services/hrisApiService');
 
 // @desc    Get all divisions
 // @route   GET /api/divisions
@@ -14,8 +15,14 @@ const getDivisions = async (req, res) => {
       sort = 'name',
       order = 'asc',
       search,
-      isActive
+      isActive,
+      source = 'local' // Add source parameter: 'local', 'hris', or 'both'
     } = req.query;
+
+    // If source is 'hris', fetch from HRIS API
+    if (source === 'hris') {
+      return await getHrisDivisions(req, res);
+    }
 
     // Build query
     let query = {};
@@ -648,6 +655,329 @@ const toggleDivisionStatus = async (req, res) => {
   }
 };
 
+<<<<<<< Updated upstream
+=======
+// @desc    Get division sections from MySQL (for attendance reports)
+// @route   GET /api/divisions/:id/mysql-sections
+// @access  Private
+const getDivisionMySQLSections = async (req, res) => {
+  try {
+    const { createMySQLConnection } = require('../config/mysql');
+    const divisionId = req.params.id;
+
+    // Validate division ID
+    if (!divisionId || divisionId === 'all') {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid division ID is required'
+      });
+    }
+
+    console.log(`Getting MySQL sections for division ID: ${divisionId}`);
+
+    // Check if this is a MongoDB ObjectId (24 character hex string)
+    const isMongoId = divisionId.length === 24 && /^[0-9a-fA-F]{24}$/.test(divisionId);
+    let mysqlDivisionId = divisionId;
+
+    if (isMongoId) {
+      // This is a MongoDB ID, we need to map it to MySQL ID
+      console.log('MongoDB ID detected, mapping to MySQL ID...');
+      
+      // First, get the division name from MongoDB
+      const Division = require('../models/Division');
+      const mongoDiv = await Division.findById(divisionId);
+      
+      if (!mongoDiv) {
+        return res.status(404).json({
+          success: false,
+          message: 'Division not found in MongoDB'
+        });
+      }
+
+      console.log(`MongoDB division name: ${mongoDiv.name}`);
+
+      // Now find the corresponding MySQL division by name
+      const connection = await createMySQLConnection();
+      
+      // Map common name variations
+      let searchName = mongoDiv.name.trim().toUpperCase();
+      if (searchName === 'INFORMATION SYSTEM') {
+        searchName = 'INFORMATION SYSTEMS';
+      }
+      
+      const [mysqlDivisions] = await connection.execute(`
+        SELECT division_id, division_name 
+        FROM divisions 
+        WHERE UPPER(division_name) = ? OR UPPER(division_name) LIKE ?
+        LIMIT 1
+      `, [searchName, `%${searchName}%`]);
+
+      if (mysqlDivisions.length === 0) {
+        await connection.end();
+        console.log(`No MySQL division found for name: ${searchName}`);
+        
+        // Return empty sections instead of error for divisions that don't exist in MySQL
+        return res.status(200).json({
+          success: true,
+          data: [], // Empty sections array
+          count: 0,
+          message: `No MySQL sections found for division: ${mongoDiv.name}`,
+          mapping: {
+            mongoId: divisionId,
+            mysqlId: null,
+            reason: 'Division not found in MySQL database'
+          }
+        });
+      }
+
+      mysqlDivisionId = mysqlDivisions[0].division_id;
+      console.log(`Mapped to MySQL division ID: ${mysqlDivisionId}`);
+      
+      await connection.end();
+    }
+
+    // Now get sections for the MySQL division ID
+    const connection = await createMySQLConnection();
+
+    const [sections] = await connection.execute(`
+      SELECT s.section_id, s.section_name, s.division_id, d.division_name
+      FROM sections s
+      LEFT JOIN divisions d ON s.division_id = d.division_id
+      WHERE s.division_id = ?
+      ORDER BY s.section_name ASC
+    `, [mysqlDivisionId]);
+
+    await connection.end();
+
+    // Format for frontend compatibility
+    const formattedSections = sections.map(section => ({
+      _id: section.section_id.toString(), // Use MySQL ID as _id for compatibility
+      section_id: section.section_id,
+      section_name: section.section_name,
+      name: section.section_name, // Alternative property name
+      division_id: section.division_id,
+      division_name: section.division_name,
+      isActive: true // Default for MySQL sections
+    }));
+
+    console.log(`Found ${formattedSections.length} MySQL sections for division ${mysqlDivisionId}`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedSections,
+      count: formattedSections.length,
+      mapping: isMongoId ? {
+        mongoId: divisionId,
+        mysqlId: mysqlDivisionId
+      } : null
+    });
+
+  } catch (error) {
+    console.error('Get division MySQL sections error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error getting division sections from MySQL'
+    });
+  }
+};
+
+// @desc    Get all divisions from HRIS API
+// @route   GET /api/divisions/hris
+// @access  Public (for now)
+const getHrisDivisions = async (req, res) => {
+  try {
+    console.log('Attempting to fetch divisions from HRIS API...');
+    
+    // Fetch all company hierarchy data first (no filter to avoid HRIS API filter issues)
+    const allHierarchy = await readData('company_hierarchy', {});
+    
+    // Filter for Level 3 (divisions) locally to avoid HRIS API filter issues
+    const divisions = allHierarchy.filter(item => item.DEF_LEVEL === 3 || item.DEF_LEVEL === '3');
+    
+    // Transform HRIS data to match frontend expectations
+    const transformedDivisions = divisions.map((division, index) => ({
+      _id: division.HIE_CODE || `hris_${index}`,
+      code: division.HIE_CODE || 'N/A',
+      name: division.HIE_NAME || 'Unknown Division',
+      description: division.HIE_NAME_SINHALA || '',
+      isActive: true, // Assume all HRIS divisions are active
+      employeeCount: 0, // Will need separate call to get this
+      createdAt: new Date().toISOString(),
+      status: 'ACTIVE',
+      // Additional HRIS specific fields
+      hie_code: division.HIE_CODE,
+      hie_name: division.HIE_NAME,
+      hie_relationship: division.HIE_RELATIONSHIP,
+      def_level: division.DEF_LEVEL
+    }));
+
+    console.log(`Successfully fetched ${transformedDivisions.length} divisions from HRIS`);
+
+    res.status(200).json({
+      success: true,
+      message: 'HRIS divisions fetched successfully',
+      data: transformedDivisions,
+      pagination: {
+        page: 1,
+        limit: transformedDivisions.length,
+        total: transformedDivisions.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
+    });
+  } catch (error) {
+    console.error('Get HRIS divisions error:', error.message);
+    console.error('Falling back to local divisions...');
+    
+    try {
+      // Fallback to local divisions with HRIS-like structure
+      const localDivisions = await Division.find({ isActive: true })
+        .populate('manager', 'firstName lastName email employeeId')
+        .populate('employeeCount')
+        .populate('sectionCount')
+        .sort({ name: 1 });
+
+      // Transform local divisions to match HRIS format
+      const transformedLocalDivisions = localDivisions.map((division, index) => ({
+        _id: division._id,
+        code: division.code || `DIV${String(index + 1).padStart(3, '0')}`,
+        name: division.name,
+        description: division.description || '',
+        isActive: division.isActive,
+        employeeCount: division.employeeCount || 0,
+        createdAt: division.createdAt?.toISOString() || new Date().toISOString(),
+        status: division.isActive ? 'ACTIVE' : 'INACTIVE',
+        // HRIS-like fields for compatibility
+        hie_code: division.code || `DIV${String(index + 1).padStart(3, '0')}`,
+        hie_name: division.name,
+        hie_relationship: 'LOCAL_DB',
+        def_level: 3,
+        source: 'LOCAL_FALLBACK'
+      }));
+
+      console.log(`Fallback: returning ${transformedLocalDivisions.length} local divisions`);
+
+      res.status(200).json({
+        success: true,
+        message: 'HRIS API unavailable. Showing local divisions as fallback.',
+        data: transformedLocalDivisions,
+        pagination: {
+          page: 1,
+          limit: transformedLocalDivisions.length,
+          total: transformedLocalDivisions.length,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPrevPage: false
+        },
+        fallback: true,
+        originalError: 'HRIS API connection failed'
+      });
+    } catch (fallbackError) {
+      console.error('Fallback to local divisions also failed:', fallbackError);
+      res.status(500).json({
+        success: false,
+        message: 'Both HRIS API and local database are unavailable',
+        error: error.message
+      });
+    }
+  }
+};
+
+// @desc    Get combined divisions from both local DB and HRIS API
+// @route   GET /api/divisions/combined
+// @access  Public (for now)
+const getCombinedDivisions = async (req, res) => {
+  try {
+    const { prioritize = 'hris' } = req.query; // 'hris' or 'local'
+
+    let divisions = [];
+    let hrisDivisions = [];
+    let localDivisions = [];
+
+    try {
+      // Fetch HRIS divisions
+      const hrisData = await readData('company_hierarchy', { DEF_LEVEL: 3 });
+      hrisDivisions = hrisData.map((division, index) => ({
+        _id: `hris_${division.HIE_CODE || index}`,
+        code: division.HIE_CODE || 'N/A',
+        name: division.HIE_NAME || 'Unknown Division',
+        description: division.HIE_NAME_SINHALA || '',
+        isActive: true,
+        employeeCount: 0,
+        createdAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        source: 'HRIS',
+        hie_code: division.HIE_CODE,
+        hie_name: division.HIE_NAME,
+        hie_relationship: division.HIE_RELATIONSHIP,
+        def_level: division.DEF_LEVEL
+      }));
+    } catch (hrisError) {
+      console.warn('Failed to fetch HRIS divisions:', hrisError.message);
+    }
+
+    try {
+      // Fetch local divisions
+      const localQuery = {};
+      const localData = await Division.find(localQuery)
+        .populate('manager', 'firstName lastName email employeeId')
+        .populate('employeeCount')
+        .populate('sectionCount')
+        .sort({ name: 1 });
+
+      localDivisions = localData.map(division => ({
+        ...division.toObject(),
+        source: 'LOCAL',
+        createdAt: division.createdAt?.toISOString() || new Date().toISOString()
+      }));
+    } catch (localError) {
+      console.warn('Failed to fetch local divisions:', localError.message);
+    }
+
+    // Combine divisions based on priority
+    if (prioritize === 'hris') {
+      divisions = [...hrisDivisions, ...localDivisions];
+    } else {
+      divisions = [...localDivisions, ...hrisDivisions];
+    }
+
+    // Remove duplicates based on name (case insensitive)
+    const uniqueDivisions = divisions.filter((division, index, self) => 
+      index === self.findIndex(d => 
+        d.name.toLowerCase() === division.name.toLowerCase()
+      )
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Combined divisions fetched successfully',
+      data: uniqueDivisions,
+      pagination: {
+        page: 1,
+        limit: uniqueDivisions.length,
+        total: uniqueDivisions.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      },
+      meta: {
+        hrisCount: hrisDivisions.length,
+        localCount: localDivisions.length,
+        totalCount: uniqueDivisions.length,
+        prioritize
+      }
+    });
+  } catch (error) {
+    console.error('Get combined divisions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error getting combined divisions'
+    });
+  }
+};
+
+>>>>>>> Stashed changes
 module.exports = {
   getDivisions,
   getDivision,
@@ -657,5 +987,7 @@ module.exports = {
   getDivisionEmployees,
   getDivisionSections,
   getDivisionStats,
-  toggleDivisionStatus
+  toggleDivisionStatus,
+  getHrisDivisions,
+  getCombinedDivisions
 };
